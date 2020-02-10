@@ -1,0 +1,13 @@
+-- !Ups
+
+CREATE TABLE BATTLE_PLAYER (
+    ID bigint(20) NOT NULL AUTO_INCREMENT,
+    PLAYER_TAG varchar(255) NOT NULL,
+    MMR bigint(20) NOT NULL,
+    AUTH_USER_INFO_ID varchar(255) NOT NULL,
+    PRIMARY KEY (ID)
+);
+
+-- !Downs
+
+DROP TABLE BATTLE_PLAYER;

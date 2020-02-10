@@ -2,16 +2,16 @@ package auth.config
 
 
 import com.google.inject.{AbstractModule, Provides}
-import com.mohiva.play.silhouette.api.crypto.{Base64AuthenticatorEncoder, Signer}
+import com.mohiva.play.silhouette.api.crypto.{AuthenticatorEncoder, Base64AuthenticatorEncoder, Signer}
 import com.mohiva.play.silhouette.api.repositories.AuthenticatorRepository
 import com.mohiva.play.silhouette.api.services.{AuthenticatorService, IdentityService}
 import com.mohiva.play.silhouette.api.util._
-import com.mohiva.play.silhouette.api.{Environment, EventBus, Silhouette, SilhouetteProvider}
+import com.mohiva.play.silhouette.api.{Environment, EventBus, LoginInfo, Silhouette, SilhouetteProvider}
 import com.mohiva.play.silhouette.crypto.{JcaSigner, JcaSignerSettings}
 import com.mohiva.play.silhouette.impl.authenticators.{JWTAuthenticator, JWTAuthenticatorService, JWTAuthenticatorSettings}
-import com.mohiva.play.silhouette.impl.providers.oauth2.GoogleProvider
+import com.mohiva.play.silhouette.impl.providers.oauth2.{FacebookProvider, GoogleProvider}
 import com.mohiva.play.silhouette.impl.providers.state.{CsrfStateItemHandler, CsrfStateSettings}
-import com.mohiva.play.silhouette.impl.providers.{DefaultSocialStateHandler, OAuth2Settings, SocialStateHandler}
+import com.mohiva.play.silhouette.impl.providers.{CommonSocialProfile, DefaultSocialStateHandler, OAuth2Provider, OAuth2Settings, SocialProfile, SocialStateHandler, oauth2}
 import com.mohiva.play.silhouette.impl.util.{DefaultFingerprintGenerator, PlayCacheLayer, SecureRandomIDGenerator}
 import com.mohiva.play.silhouette.password.BCryptPasswordHasher
 import com.mohiva.play.silhouette.persistence.repositories.CacheAuthenticatorRepository
@@ -27,7 +27,9 @@ import net.ceedubs.ficus.readers.ValueReader
 import play.api.mvc.Cookie
 
 import scala.concurrent.ExecutionContext.Implicits._
+import scala.concurrent.Future
 import scala.reflect.ClassTag
+import scala.util.{Failure, Success}
 
 class AuthModule extends AbstractModule with ScalaModule {
 
@@ -46,7 +48,7 @@ class AuthModule extends AbstractModule with ScalaModule {
 
   override def configure() {
     bind[Silhouette[DefaultEnv]].to[SilhouetteProvider[DefaultEnv]]
-    bind[IdentityService[BattleUser]].to[UserService]
+    //bind[IdentityService[BattleUser]].to[AuthBattleUserService]
     bind[IDGenerator].toInstance(new SecureRandomIDGenerator())
     bind[PasswordHasher].toInstance(new BCryptPasswordHasher)
     bind[FingerprintGenerator].toInstance(new DefaultFingerprintGenerator(false))
@@ -75,7 +77,7 @@ class AuthModule extends AbstractModule with ScalaModule {
 
   @Provides
   def provideEnvironment(
-                          userService: UserService,
+                          userService: AuthBattleUserService,
                           authenticatorService: AuthenticatorService[JWTAuthenticator],
                           eventBus: EventBus,
                         ): Environment[DefaultEnv] = {
@@ -90,21 +92,30 @@ class AuthModule extends AbstractModule with ScalaModule {
 
 
   @Provides
-  def provideGoogleProvider(socialStateHandler: SocialStateHandler, httpLayer: HTTPLayer, config: Configuration): GoogleProvider = {
-    val settings = OAuth2Settings(
-      authorizationURL = config.getOptional[String]("silhouette.google.authorizationURL"),
-      accessTokenURL = config.getOptional[String]("silhouette.google.accessTokenURL").get,
-      redirectURL = config.getOptional[String]("silhouette.google.redirectURL"),
-      clientID = config.getOptional[String]("silhouette.google.clientID").get,
-      clientSecret = config.getOptional[String]("silhouette.google.clientSecret").get,
-      scope = config.getOptional[String]("silhouette.google.scope"))
+  @Named("provider-registry")
+  def provideProviderRegistry(socialStateHandler: SocialStateHandler, httpLayer: HTTPLayer, config: Configuration): Map[String, OAuth2Provider] = {
 
-    new GoogleProvider(httpLayer, socialStateHandler, settings)
+    val googleSettings = config.underlying.as[OAuth2Settings]("silhouette.google")
+    val facebookSettings = config.underlying.as[OAuth2Settings]("silhouette.facebook")
+
+    Map(
+      GoogleProvider.ID -> new GoogleProvider(httpLayer, socialStateHandler, googleSettings),
+      FacebookProvider.ID -> new FacebookProvider(httpLayer, socialStateHandler, facebookSettings)
+    )
   }
+
+  type PicProvider = CommonSocialProfile => Option[String]
+
+  @Provides
+  @Named("profile-url-registry")
+  def provideProviderProfileUrlMap(): Map[String, PicProvider] = Map(
+    GoogleProvider.ID -> ((info: CommonSocialProfile) => info.avatarURL.map(_.replace("s100", "s600"))),
+    FacebookProvider.ID -> ((info: CommonSocialProfile) => Option(s"https://graph.facebook.com/${info.loginInfo.providerKey}/picture?type=large"))
+  )
 
   @Provides
   def proviceJWTAuthenticatorService(idGenerator: IDGenerator, repo: AuthenticatorRepository[JWTAuthenticator]): AuthenticatorService[JWTAuthenticator] = {
-    new JWTAuthenticatorService(JWTAuthenticatorSettings(sharedSecret = "secret01234567890ABCDEFGHIJKLMNO"),
+    new CustomJWTAuthenticatorService(JWTAuthenticatorSettings(sharedSecret = "secret01234567890ABCDEFGHIJKLMNO"),
       Some(repo),
       new Base64AuthenticatorEncoder,
       idGenerator, Clock())
@@ -112,4 +123,25 @@ class AuthModule extends AbstractModule with ScalaModule {
 
   @Provides
   def providesJWTAuthenticatorClassTag: ClassTag[JWTAuthenticator] = ClassTag[JWTAuthenticator](classOf[JWTAuthenticator])
+}
+
+class CustomJWTAuthenticatorService(
+                                     settings: JWTAuthenticatorSettings,
+                                     repository: Option[AuthenticatorRepository[JWTAuthenticator]],
+                                     authenticatorEncoder: AuthenticatorEncoder,
+                                     idGenerator: IDGenerator,
+                                     clock: Clock) extends JWTAuthenticatorService(settings, repository, authenticatorEncoder, idGenerator, clock) {
+
+  override def retrieve[B](implicit request: ExtractableRequest[B]): Future[Option[JWTAuthenticator]] = {
+
+    val cookieFuture: Future[Option[JWTAuthenticator]] = JWTAuthenticator.unserialize(request.cookies.get("JWT").map(_.value).orNull, authenticatorEncoder, settings) match {
+      case Success(authenticator) => repository.fold(Future.successful(Option(authenticator)))(_.find(authenticator.id))
+      case Failure(e) =>
+        logger.info(e.getMessage, e)
+        Future.failed(e)
+    }
+    cookieFuture.recoverWith {
+      case _ => super.retrieve
+    }(this.executionContext)
+  }
 }

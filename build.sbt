@@ -11,7 +11,7 @@ resolvers += "Atlassian Releases" at "https://maven.atlassian.com/public/"
 
 scalaVersion := "2.12.2"
 
-libraryDependencies ++= Seq(jdbc, ehcache, ws, specs2 % Test, guice)
+libraryDependencies ++= Seq(ehcache, ws, specs2 % Test, guice)
 
 unmanagedResourceDirectories in Test <+= baseDirectory(_ / "target/web/public/test")
 
@@ -22,5 +22,8 @@ libraryDependencies ++= Seq(
   "com.mohiva" %% "play-silhouette-persistence" % "6.1.0",
   "com.mohiva" %% "play-silhouette-testkit" % "6.1.0" % "test",
   "net.codingwell" %% "scala-guice" % "4.2.6",
-  "com.iheart" %% "ficus" % "1.4.7"
+  "com.iheart" %% "ficus" % "1.4.7",
+  "com.typesafe.play" %% "play-slick" % "4.0.0",
+  "com.typesafe.play" %% "play-slick-evolutions" % "4.0.0",
+  "com.h2database" % "h2" % "1.4.200"
 )
