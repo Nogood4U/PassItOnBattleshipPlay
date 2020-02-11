@@ -59,26 +59,32 @@ class HomeController @Inject()(cc: ControllerComponents,
   def updatePlayer(playerId: String): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
     request.body.asJson.map(jsonData => {
 
-      val tagUpdate = (jsonData \ "playerTag").toOption.map(playerTag => {
-        for {
+      val tagUpdate: Option[Future[BattlePlayer]] = (jsonData \ "playerTag").toOption.map(playerTag => {
+        (for {
           optPlayer <- battlePlayerService.getBattlePlayer(playerId)
-          player <- battlePlayerService.getBattlePlayer(optPlayer.get.userInfoId) if optPlayer.isDefined
-          uPlayer <- battlePlayerService.saveBattlePlayer(player.get.copy(playerTag = playerTag.as[String])) if player.isDefined
-        } yield uPlayer
-      }).orElse(None)
+          player: Option[BattlePlayer] <- if (optPlayer.isDefined) battlePlayerService.getBattlePlayer(optPlayer.get.userInfoId)
+          else Future.successful(None)
+          uPlayer <- if (player.isDefined) battlePlayerService.saveBattlePlayer(player.get.copy(playerTag = playerTag.as[String]))
+          else Future.failed[BattlePlayer](null)
+        } yield uPlayer)
+      })
 
-      val profileUpdate = (jsonData \ "publicProfile").toOption.map(isPublic => {
-        for {
+      val profileUpdate: Option[Future[BattlePlayer]] = (jsonData \ "publicProfile").toOption.map(isPublic => {
+        (for {
           optPlayer <- battlePlayerService.getBattlePlayer(playerId)
-          player <- battlePlayerService.getBattlePlayer(optPlayer.get.userInfoId) if optPlayer.isDefined
-          uPlayer <- battlePlayerService.saveBattlePlayer(player.get.copy(public = isPublic.as[Boolean])) if player.isDefined
-        } yield uPlayer
-      }).orElse(None)
+          player: Option[BattlePlayer] <- if (optPlayer.isDefined) battlePlayerService.getBattlePlayer(optPlayer.get.userInfoId)
+          else Future.successful(None)
+          uPlayer <- if (player.isDefined) battlePlayerService.saveBattlePlayer(player.get.copy(public = isPublic.as[Boolean]))
+          else Future.failed[BattlePlayer](null)
+        } yield uPlayer)
+      })
 
       val futureOpt: Future[BattlePlayer] = tagUpdate.orElse(profileUpdate).get
-      for {
+      (for {
         player <- futureOpt
-      } yield Ok(Json.toJson(player))
+      } yield Ok(Json.toJson(player))).recoverWith {
+        case _ => Future.successful(BadRequest)
+      }
 
     }).getOrElse(Future.successful(BadRequest))
   }
