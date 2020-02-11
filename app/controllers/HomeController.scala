@@ -112,7 +112,7 @@ class HomeController @Inject()(cc: ControllerComponents,
           value <- authenticatorService.init(authenticator)
           result <- authenticatorService.embed(value, Redirect("http://localhost:4200/"))
           _ <- battlePlayerService.getBattlePlayer(user.loginInfo.providerKey.toString).map {
-            case Some(value) => Future.successful()
+            case Some(value) => Future.successful(null)
             case None => battlePlayerService.saveBattlePlayer(
               BattlePlayer(0, user.firstName.getOrElse(UUID.randomUUID().toString), 1400, user.loginInfo.providerKey.toString))
           }
