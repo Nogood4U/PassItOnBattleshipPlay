@@ -48,7 +48,7 @@ class HomeController @Inject()(cc: ControllerComponents,
   implicit val playerWrites = Json.writes[BattlePlayer]
 
   def index: Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
-    battlePlayerService.getBattlePlayer(request.identity.userId.toString)
+    battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey.toString)
       .map(player => {
         Ok(Json.obj("user" -> Json.toJson(request.identity.asInstanceOf[BattleUser]), "player" -> Json.toJson(player)))
       }).recoverWith {
@@ -57,31 +57,29 @@ class HomeController @Inject()(cc: ControllerComponents,
   }
 
   def updatePlayer(playerId: String): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
-    request.body.asJson.flatMap(jsonData => {
+    request.body.asJson.map(jsonData => {
 
       val tagUpdate = (jsonData \ "playerTag").toOption.map(playerTag => {
-        battlePlayerService.getBattlePlayer(playerId)
-          .flatMap(player => {
-            val updatedPlayer = player.copy(playerTag = playerTag.as[String])
-            battlePlayerService.saveBattlePlayer(updatedPlayer)
-          })
-      }).orElse(Some(0))
+        for {
+          optPlayer <- battlePlayerService.getBattlePlayer(playerId)
+          player <- battlePlayerService.getBattlePlayer(optPlayer.get.userInfoId) if optPlayer.isDefined
+          uPlayer <- battlePlayerService.saveBattlePlayer(player.get.copy(playerTag = playerTag.as[String])) if player.isDefined
+        } yield uPlayer
+      }).orElse(None)
 
       val profileUpdate = (jsonData \ "publicProfile").toOption.map(isPublic => {
-        battlePlayerService.getBattlePlayer(playerId)
-          .flatMap(player => {
-            val updatedPlayer = player.copy(public = isPublic.as[Boolean])
-            battlePlayerService.saveBattlePlayer(updatedPlayer)
-          })
-      }).orElse(Some(0))
+        for {
+          optPlayer <- battlePlayerService.getBattlePlayer(playerId)
+          player <- battlePlayerService.getBattlePlayer(optPlayer.get.userInfoId) if optPlayer.isDefined
+          uPlayer <- battlePlayerService.saveBattlePlayer(player.get.copy(public = isPublic.as[Boolean])) if player.isDefined
+        } yield uPlayer
+      }).orElse(None)
+
+      val futureOpt: Future[BattlePlayer] = tagUpdate.orElse(profileUpdate).get
       for {
-        u1 <- tagUpdate
-        u2 <- profileUpdate
-      } yield {
-        battlePlayerService.getBattlePlayer(playerId)
-          .map(_player => Json.toJson(_player))
-          .map(Ok(_))
-      }
+        player <- futureOpt
+      } yield Ok(Json.toJson(player))
+
     }).getOrElse(Future.successful(BadRequest))
   }
 
@@ -107,7 +105,11 @@ class HomeController @Inject()(cc: ControllerComponents,
           authenticator <- authenticatorService.create(profile.loginInfo)
           value <- authenticatorService.init(authenticator)
           result <- authenticatorService.embed(value, Redirect("http://localhost:4200/"))
-          _ <- battlePlayerService.saveBattlePlayer(BattlePlayer(0, user.firstName.getOrElse(UUID.randomUUID().toString), 1400, user.userId.toString))
+          _ <- battlePlayerService.getBattlePlayer(user.loginInfo.providerKey.toString).map {
+            case Some(value) => Future.successful()
+            case None => battlePlayerService.saveBattlePlayer(
+              BattlePlayer(0, user.firstName.getOrElse(UUID.randomUUID().toString), 1400, user.loginInfo.providerKey.toString))
+          }
         } yield {
           eventBus.publish(LoginEvent(user, request))
           //looks weird af
