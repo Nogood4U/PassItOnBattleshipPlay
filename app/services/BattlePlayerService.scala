@@ -13,7 +13,7 @@ import scala.concurrent.ExecutionContext.Implicits._
 class BattlePlayerService @Inject()(protected val dbConfigProvider: DatabaseConfigProvider) extends HasDatabaseConfigProvider[JdbcProfile] {
 
   def saveBattlePlayer(player: BattlePlayer): Future[Int] = {
-    db.run(Tables.battlePlayers += player)
+    db.run(Tables.battlePlayers.insertOrUpdate(player))
   }
 
   def getBattlePlayer(authId: String): Future[BattlePlayer] = db.run((for {

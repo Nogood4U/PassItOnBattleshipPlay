@@ -7,7 +7,8 @@ import controllers.BattleUser
 case class BattlePlayer(id: Long,
                         playerTag: String,
                         mmr: Long,
-                        userInfoId: String
+                        userInfoId: String,
+                        public: Boolean = false
                        )
 
 //slick mappings
@@ -23,7 +24,9 @@ class BattlePlayerTable(tag: Tag) extends Table[BattlePlayer](tag, "BATTLE_PLAYE
 
   def battleUserInfoId = column[String]("AUTH_USER_INFO_ID")
 
-  override def * = (id, playerTag, mmr, battleUserInfoId) <> (BattlePlayer.tupled, BattlePlayer.unapply)
+  def isPublic = column[Boolean]("PUBLIC_PROFILE")
+
+  override def * = (id, playerTag, mmr, battleUserInfoId, isPublic) <> (BattlePlayer.tupled, BattlePlayer.unapply)
 }
 
 object Tables {

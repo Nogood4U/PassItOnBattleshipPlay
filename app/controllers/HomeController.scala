@@ -56,13 +56,33 @@ class HomeController @Inject()(cc: ControllerComponents,
     }
   }
 
-  def updatePlayer: Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
-    battlePlayerService.getBattlePlayer(request.identity.userId.toString)
-      .map(player => {
-        Ok(Json.obj("user" -> Json.toJson(request.identity.asInstanceOf[BattleUser]), "player" -> Json.toJson(player)))
-      }).recoverWith {
-      case _ => Future.successful(NotFound)
-    }
+  def updatePlayer(playerId: String): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
+    request.body.asJson.flatMap(jsonData => {
+
+      val tagUpdate = (jsonData \ "playerTag").toOption.map(playerTag => {
+        battlePlayerService.getBattlePlayer(playerId)
+          .flatMap(player => {
+            val updatedPlayer = player.copy(playerTag = playerTag.as[String])
+            battlePlayerService.saveBattlePlayer(updatedPlayer)
+          })
+      }).orElse(Some(0))
+
+      val profileUpdate = (jsonData \ "publicProfile").toOption.map(isPublic => {
+        battlePlayerService.getBattlePlayer(playerId)
+          .flatMap(player => {
+            val updatedPlayer = player.copy(public = isPublic.as[Boolean])
+            battlePlayerService.saveBattlePlayer(updatedPlayer)
+          })
+      }).orElse(Some(0))
+      for {
+        u1 <- tagUpdate
+        u2 <- profileUpdate
+      } yield {
+        battlePlayerService.getBattlePlayer(playerId)
+          .map(_player => Json.toJson(_player))
+          .map(Ok(_))
+      }
+    }).getOrElse(Future.successful(BadRequest))
   }
 
   def providerList: Action[AnyContent] = Action {
