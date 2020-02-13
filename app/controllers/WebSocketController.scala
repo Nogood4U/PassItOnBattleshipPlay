@@ -1,42 +1,78 @@
 package controllers
 
-import akka.actor.ActorSystem
-import akka.stream.Materializer
+import java.util.concurrent.TimeUnit
+
+import akka.NotUsed
+import akka.actor.{ActorRef, ActorSystem}
 import akka.stream.scaladsl._
-import com.mohiva.play.silhouette.api._
+import akka.stream.{Materializer, OverflowStrategy}
+import com.mohiva.play.silhouette.api.{HandlerResult, Silhouette}
+import game.model.GameServer.AddPlayer
 import game.model.OnlinePlayer
 import javax.inject.Inject
 import models.BattlePlayer
-import play.api.libs.streams.ActorFlow
+import org.reactivestreams.Publisher
+import play.api.libs.json.{JsValue, Json}
 import play.api.mvc._
+import services.BattlePlayerService
 
+import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 
-class WebSocketController @Inject()(cc: ControllerComponents, silhouette: Silhouette[DefaultEnv])
-                                   (implicit exec: ExecutionContext, mat: Materializer, actorSystem: ActorSystem) extends AbstractController(cc) {
+class
+WebSocketController @Inject()(cc: ControllerComponents,
+                              battlePlayerService: BattlePlayerService,
+                              silhouette: Silhouette[DefaultEnv])
+                             (implicit exec: ExecutionContext, mat: Materializer, actorSystem: ActorSystem) extends AbstractController(cc) {
 
 
-  def ws = WebSocket.acceptOrResult[String, String] { request =>
+  def ws: WebSocket = WebSocket.acceptOrResult[String, String] { request =>
     implicit val req = Request(request, AnyContentAsEmpty)
     silhouette.SecuredRequestHandler { securedRequest =>
       Future.successful(HandlerResult(Ok, Some(securedRequest.identity)))
-    }.map {
-      case HandlerResult(r, Some(value)) => Right(ActorFlow.)
-      case HandlerResult(r, None) => Left(r)
+    }.flatMap {
+      case HandlerResult(r, Some(identity)) =>
+        battlePlayerService.getBattlePlayer(identity.loginInfo.providerKey).map(player => {
+          player.map(battlePlayerService.getOrCreateActor)
+            .map(actor => actor
+              .map(getWebsocketFlow)
+              .map(Right(_)))
+        }).flatMap(_.getOrElse(Future.successful(Right(Flow.fromSinkAndSourceCoupled(Sink.ignore, Source.empty)))))
+          .recover {
+            case e => println(e)
+              Right(Flow.fromSinkAndSourceCoupled(Sink.ignore, Source.empty))
+          }
+      case HandlerResult(r, None) => Future.successful(Left(Forbidden))
     }
   }
 
-  private def getWebsocketFlow(player: BattlePlayer) = {
-    val playerActor = actorSystem.actorOf(OnlinePlayer.props(player), s"Player-${player.id}")
 
-    Sink.actorRef(playerActor, 1)
-    /* val (outActor, publisher) = Source
-       .actorRef[Out](bufferSize, overflowStrategy)
-       .toMat(Sink.asPublisher(false))(Keep.both)
-       .run()*/
+  private def getWebsocketFlow(playerActor: ActorRef) = {
 
     // We read from sink
     // Play read from source and sends to client
+
+    // Flow1 - Sends data that gets to ActorRef to playerActor
+    val mySource = Source.actorRef[String](100, OverflowStrategy.dropTail)
+    val mySink = Sink.actorRef(playerActor, 1)
+    //parse JsonInto ProperMessages
+    val flow: Flow[String, JsValue, NotUsed] = Flow[String].map(data => Json.parse(data))
+    // ActorRef = sink to send to play
+    val g: (ActorRef, NotUsed) = flow.runWith(mySource, mySink)
+    // Flow2
+    // Sink you can subscribe and receive message
+    val publisherSink = Sink.asPublisher[String](fanout = false)
+    // data send to this actor ref will be send to publisherSink
+    val mySource2 = Source.actorRef[JsValue](100, OverflowStrategy.dropTail)
+    // transforms JsValue to String
+    val flow2: Flow[JsValue, String, NotUsed] = Flow[JsValue].map(data => Json.stringify(data))
+
+    //ActorRed is out we can write to play , publisher is to create a source from , that will send data sent to ActorRef to Play
+    val both: (ActorRef, Publisher[String]) = flow2.runWith(mySource2, publisherSink)
+
+    playerActor ! OnlinePlayer.UpdateOutput(both._1)
+
+    Flow.fromSinkAndSourceCoupled(Sink.actorRef[String](g._1, 1), Source.fromPublisher[String](both._2))
   }
 
 }

@@ -51,8 +51,8 @@ class HomeController @Inject()(cc: ControllerComponents,
     battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey.toString)
       .map(player => {
         Ok(Json.obj("user" -> Json.toJson(request.identity.asInstanceOf[BattleUser]), "player" -> Json.toJson(player)))
-      }).recoverWith {
-      case _ => Future.successful(NotFound)
+      }).recover {
+      case _ => NotFound
     }
   }
 

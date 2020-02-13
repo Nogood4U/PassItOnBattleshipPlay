@@ -1,13 +1,16 @@
-import com.google.inject.AbstractModule
 import java.time.Clock
 
+import akka.actor.ActorSystem
+import com.google.inject.AbstractModule
+import game.model.GameServer
+import javax.inject.Inject
 import services.{ApplicationTimer, AtomicCounter, Counter}
 
 /**
  * This class is a Guice module that tells Guice how to bind several
  * different types. This Guice module is created when the Play
  * application starts.
-
+ *
  * Play will automatically use any class called `Module` that is in
  * the root package. You can create modules in other locations by
  * adding `play.modules.enabled` settings to the `application.conf`
@@ -23,6 +26,22 @@ class Module extends AbstractModule {
     bind(classOf[ApplicationTimer]).asEagerSingleton()
     // Set AtomicCounter as the implementation for Counter.
     bind(classOf[Counter]).to(classOf[AtomicCounter])
+    bind(classOf[ApplicationStart]).asEagerSingleton()
   }
 
+}
+
+import javax.inject._
+import play.api.inject.ApplicationLifecycle
+
+import scala.concurrent.Future
+
+@Singleton
+class ApplicationStart @Inject()(lifecycle: ApplicationLifecycle, actorSystem: ActorSystem) {
+  // Shut-down hook
+  lifecycle.addStopHook { () =>
+    Future.successful(())
+  }
+  actorSystem.actorOf(GameServer.props, "Server_Main")
+  //...
 }

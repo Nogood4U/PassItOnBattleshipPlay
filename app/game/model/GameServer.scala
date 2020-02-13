@@ -1,20 +1,33 @@
 package game.model
 
+import java.util.concurrent.TimeUnit
+
 import akka.actor.{Actor, ActorRef, Props}
-import game.model.GameServer.{AddPlayer, AddedPlayer, FromPlayers, ToPlayers, UpdateSettings}
+import game.matchmaking.MatchMaking
+import game.matchmaking.MatchMaking.{InitMatchMaking, JoinMatchMaking}
+import game.model.GameServer._
 import models.BattlePlayer
 
 import scala.collection.mutable
+import scala.concurrent.duration.FiniteDuration
 
 class GameServer extends Actor {
   private val settings = mutable.Map[String, String]()
 
+  val mmActor = context.actorOf(MatchMaking.props)
+  mmActor ! InitMatchMaking(100, 300, 10, FiniteDuration(30, TimeUnit.SECONDS).toSeconds)
+
   override def receive: Receive = {
     case AddPlayer(out, player) =>
       context.actorOf(GameServer.proxyProps(out), s"PlayerProxy-${player.id}")
+      println(s"Added Player created PlayerProxy-${player.id}")
       out ! AddedPlayer(settings.toMap)
 
     case UpdateSettings(settings) => settings.foreach { case (key, value) => this.settings.put(key, value) }
+
+    case JoinServerMatchMaking(player) =>
+      context.child(s"PlayerProxy-${player.id}").foreach(child => mmActor ! JoinMatchMaking(player, child))
+      sender() ! 1
   }
 }
 
@@ -34,11 +47,14 @@ object GameServer {
 
   case class UpdateSettings(serverSettings: Map[String, String]) extends FromPlayers
 
+  case class JoinServerMatchMaking(player: BattlePlayer)
+
 }
 
 class PlayerProxy(proxyPlayer: ActorRef) extends Actor {
   override def receive: Receive = {
     case _: ToPlayers => proxyPlayer ! _
     case _: FromPlayers => context.parent ! _
+    case _ => proxyPlayer ! _
   }
 }
