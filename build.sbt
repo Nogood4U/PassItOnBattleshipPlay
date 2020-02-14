@@ -25,5 +25,6 @@ libraryDependencies ++= Seq(
   "com.iheart" %% "ficus" % "1.4.7",
   "com.typesafe.play" %% "play-slick" % "4.0.0",
   "com.typesafe.play" %% "play-slick-evolutions" % "4.0.0",
-  "com.h2database" % "h2" % "1.4.200"
+  "com.h2database" % "h2" % "1.4.200",
+  "org.reactivemongo" %% "play2-reactivemongo" % "0.20.3-play27"
 )

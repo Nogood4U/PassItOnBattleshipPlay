@@ -21,7 +21,7 @@ class MatchMakingBracket(step: Int, maxBracketTime: FiniteDuration) extends Acto
 
   def restartTimer(): Unit = {
     timers.cancelAll()
-    timers.startPeriodicTimer(UUID.randomUUID(), MatchPlayers(), FiniteDuration(15, TimeUnit.SECONDS))
+    timers.startPeriodicTimer(UUID.randomUUID(), MatchPlayers(), FiniteDuration(18, TimeUnit.SECONDS))
     timers.startPeriodicTimer(UUID.randomUUID(), ClearBracket(), FiniteDuration(20, TimeUnit.SECONDS))
   }
 
@@ -44,7 +44,7 @@ class MatchMakingBracket(step: Int, maxBracketTime: FiniteDuration) extends Acto
       queue.enqueue(matchResult._2: _*)
 
     case ClearBracket() =>
-      println(s"cleaning up bracket $step for $queue")
+//      println(s"cleaning up bracket $step for $queue")
       queue.dequeueAll(entry => {
         val passed = System.currentTimeMillis() - entry.timestamp
         println(s"${FiniteDuration(TimeUnit.MILLISECONDS.toSeconds(passed), TimeUnit.SECONDS)} greater than $maxBracketTime")

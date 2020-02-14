@@ -36,7 +36,7 @@ class GameController @Inject()(cc: ControllerComponents,
       .resolveOne(FiniteDuration(1, TimeUnit.MINUTES))
 
     (for {
-      playerActor <- playerActorFuture
+      _ <- playerActorFuture
       serverActor <- serverActorFuture
     } yield {
       (serverActor ? JoinServerMatchMaking(player)) (FiniteDuration(10, TimeUnit.SECONDS)).mapTo[Int]

@@ -2,7 +2,7 @@ package controllers
 
 import java.util.UUID
 
-import auth.config.AuthBattleUserService
+import auth.config.AuthBattleUserMongoService
 import com.mohiva.play.silhouette.api.actions.SecuredRequest
 import services.BattlePlayerService
 import com.mohiva.play.silhouette.api._
@@ -11,8 +11,8 @@ import com.mohiva.play.silhouette.impl.authenticators.JWTAuthenticator
 import com.mohiva.play.silhouette.impl.providers.{OAuth2Info, OAuth2Provider}
 import controllers.Roles.{AdminRole, Role, UserRole}
 import javax.inject._
-import models.{BattlePlayer, Tables}
-import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
+import models.BattlePlayer
+import play.api.db.slick.DatabaseConfigProvider
 import play.api.libs.json._
 import play.api.mvc._
 
@@ -29,7 +29,7 @@ class HomeController @Inject()(cc: ControllerComponents,
                                silhouette: Silhouette[DefaultEnv],
                                @Named("provider-registry")
                                providerRegistry: Map[String, OAuth2Provider],
-                               userService: AuthBattleUserService,
+                               userService: AuthBattleUserMongoService,
                                eventBus: EventBus,
                                battlePlayerService: BattlePlayerService,
                                authenticatorService: AuthenticatorService[JWTAuthenticator]) extends AbstractController(cc) {
@@ -48,11 +48,11 @@ class HomeController @Inject()(cc: ControllerComponents,
   implicit val playerWrites = Json.writes[BattlePlayer]
 
   def index: Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
-    battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey.toString)
+    battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey)
       .map(player => {
         Ok(Json.obj("user" -> Json.toJson(request.identity.asInstanceOf[BattleUser]), "player" -> Json.toJson(player)))
       }).recover {
-      case _ => NotFound
+      case e => e.printStackTrace(); NotFound
     }
   }
 
@@ -155,6 +155,8 @@ object Roles {
   case object AdminRole extends Role("admin")
 
   case object UserRole extends Role("user")
+
+  case object Guest extends Role("guest")
 
 }
 

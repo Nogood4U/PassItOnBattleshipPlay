@@ -77,7 +77,7 @@ class AuthModule extends AbstractModule with ScalaModule {
 
   @Provides
   def provideEnvironment(
-                          userService: AuthBattleUserService,
+                          userService: AuthBattleUserMongoService,
                           authenticatorService: AuthenticatorService[JWTAuthenticator],
                           eventBus: EventBus,
                         ): Environment[DefaultEnv] = {
