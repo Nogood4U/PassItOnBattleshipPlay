@@ -7,13 +7,14 @@ import akka.actor.{ActorRef, ActorSystem}
 import akka.stream.scaladsl._
 import akka.stream.{Materializer, OverflowStrategy}
 import com.mohiva.play.silhouette.api.{HandlerResult, Silhouette}
-import game.model.GameServer.AddPlayer
-import game.model.OnlinePlayer
+import game.player.OnlinePlayer
+import game.server.GameServer.AddPlayer
 import javax.inject.Inject
 import models.BattlePlayer
 import org.reactivestreams.Publisher
 import play.api.libs.json.{JsValue, Json}
 import play.api.mvc._
+import play.http.websocket.Message.Pong
 import services.BattlePlayerService
 
 import scala.concurrent.duration.FiniteDuration
@@ -26,16 +27,17 @@ WebSocketController @Inject()(cc: ControllerComponents,
                              (implicit exec: ExecutionContext, mat: Materializer, actorSystem: ActorSystem) extends AbstractController(cc) {
 
 
-  def ws: WebSocket = WebSocket.acceptOrResult[String, String] { request =>
+  def ws(uid: String): WebSocket = WebSocket.acceptOrResult[String, String] { request =>
     implicit val req = Request(request, AnyContentAsEmpty)
     silhouette.SecuredRequestHandler { securedRequest =>
       Future.successful(HandlerResult(Ok, Some(securedRequest.identity)))
     }.flatMap {
       case HandlerResult(r, Some(identity)) =>
         battlePlayerService.getBattlePlayer(identity.loginInfo.providerKey).map(player => {
-          player.map(battlePlayerService.getOrCreateActor)
-            .map(actor => actor
-              .map(getWebsocketFlow)
+          player.map(_player => _player -> battlePlayerService.getOrCreateActor(_player))
+            .map(actor => actor._2
+              .flatMap(_actor => battlePlayerService.joinServer(actor._1, _actor))
+              .map(_actor => getWebsocketFlow(_actor))
               .map(Right(_)))
         }).flatMap(_.getOrElse(Future.successful(Right(Flow.fromSinkAndSourceCoupled(Sink.ignore, Source.empty)))))
           .recover {
@@ -48,15 +50,15 @@ WebSocketController @Inject()(cc: ControllerComponents,
 
 
   private def getWebsocketFlow(playerActor: ActorRef) = {
-
+    import scala.concurrent.duration._
     // We read from sink
     // Play read from source and sends to client
 
     // Flow1 - Sends data that gets to ActorRef to playerActor
     val mySource = Source.actorRef[String](100, OverflowStrategy.dropTail)
-    val mySink = Sink.actorRef(playerActor, 1)
+    val mySink = Sink.actorRef(playerActor, "{\"disconnected\":true}")
     //parse JsonInto ProperMessages
-    val flow: Flow[String, JsValue, NotUsed] = Flow[String].map(data => Json.parse(data))
+    val flow: Flow[String, JsValue, NotUsed] = Flow[String].map(data => Json.parse(data)) //map to Actor Message
     // ActorRef = sink to send to play
     val g: (ActorRef, NotUsed) = flow.runWith(mySource, mySink)
     // Flow2
@@ -72,7 +74,8 @@ WebSocketController @Inject()(cc: ControllerComponents,
 
     playerActor ! OnlinePlayer.UpdateOutput(both._1)
 
-    Flow.fromSinkAndSourceCoupled(Sink.actorRef[String](g._1, 1), Source.fromPublisher[String](both._2))
+    Flow.fromSinkAndSourceCoupled(Sink.actorRef[String](g._1, "{\"disconnected\":true}"), Source.fromPublisher[String](both._2)
+      .keepAlive(1.minutes, () => "{}"))
   }
 
 }

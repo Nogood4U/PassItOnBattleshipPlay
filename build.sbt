@@ -10,6 +10,7 @@ resolvers += "Akka Snapshot Repository" at "https://repo.akka.io/snapshots/"
 resolvers += "Atlassian Releases" at "https://maven.atlassian.com/public/"
 
 scalaVersion := "2.12.2"
+scalacOptions += "-Ypartial-unification"
 
 libraryDependencies ++= Seq(ehcache, ws, specs2 % Test, guice)
 
@@ -25,6 +26,7 @@ libraryDependencies ++= Seq(
   "com.iheart" %% "ficus" % "1.4.7",
   "com.typesafe.play" %% "play-slick" % "4.0.0",
   "com.typesafe.play" %% "play-slick-evolutions" % "4.0.0",
-  "com.h2database" % "h2" % "1.4.200",
-  "org.reactivemongo" %% "play2-reactivemongo" % "0.20.3-play27"
+  "mysql" % "mysql-connector-java" % "5.1.48",
+  "org.reactivemongo" %% "play2-reactivemongo" % "0.20.3-play27",
+  "org.typelevel" %% "cats-core" % "2.0.0"
 )

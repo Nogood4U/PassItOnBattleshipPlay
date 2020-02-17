@@ -1,7 +1,9 @@
 package controllers
 
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
+import akka.actor.ActorSystem
 import auth.config.AuthBattleUserMongoService
 import com.mohiva.play.silhouette.api.actions.SecuredRequest
 import services.BattlePlayerService
@@ -10,6 +12,7 @@ import com.mohiva.play.silhouette.api.services.AuthenticatorService
 import com.mohiva.play.silhouette.impl.authenticators.JWTAuthenticator
 import com.mohiva.play.silhouette.impl.providers.{OAuth2Info, OAuth2Provider}
 import controllers.Roles.{AdminRole, Role, UserRole}
+import game.server.GameServer
 import javax.inject._
 import models.BattlePlayer
 import play.api.db.slick.DatabaseConfigProvider
@@ -18,6 +21,10 @@ import play.api.mvc._
 
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
+import scala.concurrent.duration.FiniteDuration
+import cats.data.OptionT
+import cats.implicits._
+
 
 /**
  * This controller creates an `Action` to handle HTTP requests to the
@@ -32,7 +39,7 @@ class HomeController @Inject()(cc: ControllerComponents,
                                userService: AuthBattleUserMongoService,
                                eventBus: EventBus,
                                battlePlayerService: BattlePlayerService,
-                               authenticatorService: AuthenticatorService[JWTAuthenticator]) extends AbstractController(cc) {
+                               authenticatorService: AuthenticatorService[JWTAuthenticator])(implicit actorSystem: ActorSystem) extends AbstractController(cc) {
 
   /**
    * Create an Action to render an HTML page with a welcome message.
@@ -48,10 +55,17 @@ class HomeController @Inject()(cc: ControllerComponents,
   implicit val playerWrites = Json.writes[BattlePlayer]
 
   def index: Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
-    battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey)
-      .map(player => {
-        Ok(Json.obj("user" -> Json.toJson(request.identity.asInstanceOf[BattleUser]), "player" -> Json.toJson(player)))
-      }).recover {
+    (for {
+      player <- OptionT(battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey))
+      status <- OptionT.liftF(battlePlayerService.getPlayerStatus(player))
+    } yield player -> status.status.map(_.toString).orNull).value.map {
+      case Some(value) => Ok(
+        Json.obj(
+          "user" -> Json.toJson(request.identity.asInstanceOf[BattleUser]),
+          "player" -> Json.toJson(value._1),
+          "status" -> JsString(value._2)))
+      case None => NotFound
+    }.recover {
       case e => e.printStackTrace(); NotFound
     }
   }
@@ -126,9 +140,17 @@ class HomeController @Inject()(cc: ControllerComponents,
   }
 
   def signOut: Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
-    val result = Ok("")
+    battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey)
+      .map(player => {
+        player.map(_p => {
+          actorSystem.actorSelection(s"/user/Server_Main")
+            .resolveOne(FiniteDuration(1, TimeUnit.MINUTES)).foreach(_ ! GameServer.RemovePlayer(_p))
+        })
+      }).recover {
+      case e => e.printStackTrace(); NotFound
+    }
     eventBus.publish(LogoutEvent(request.identity, request))
-    authenticatorService.discard(request.authenticator, result)
+    authenticatorService.discard(request.authenticator, Ok)
   }
 }
 

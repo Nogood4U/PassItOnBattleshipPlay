@@ -2,7 +2,7 @@ import java.time.Clock
 
 import akka.actor.ActorSystem
 import com.google.inject.AbstractModule
-import game.model.GameServer
+import game.server.GameServer
 import javax.inject.Inject
 import services.{ApplicationTimer, AtomicCounter, Counter}
 

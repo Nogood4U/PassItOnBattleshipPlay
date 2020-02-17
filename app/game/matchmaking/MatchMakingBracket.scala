@@ -27,7 +27,7 @@ class MatchMakingBracket(step: Int, maxBracketTime: FiniteDuration) extends Acto
 
   override def receive: Receive = {
 
-    case AddEntry(entry) if !queue.exists(_.playerId == entry.playerId) =>
+    case AddEntry(entry) if !queue.exists(_.player == entry.player) =>
       queue.enqueue(entry)
       sender() ! AddedEntry(entry)
       self ! MatchPlayers()
@@ -39,12 +39,12 @@ class MatchMakingBracket(step: Int, maxBracketTime: FiniteDuration) extends Acto
       for {
         matched <- matchResult._1
       } yield {
-        context.parent ! MatchFound(matched._1, matched._2)
+        context.parent ! MatchFound(matched._1, matched._2, step)
       }
       queue.enqueue(matchResult._2: _*)
 
     case ClearBracket() =>
-//      println(s"cleaning up bracket $step for $queue")
+      //      println(s"cleaning up bracket $step for $queue")
       queue.dequeueAll(entry => {
         val passed = System.currentTimeMillis() - entry.timestamp
         println(s"${FiniteDuration(TimeUnit.MILLISECONDS.toSeconds(passed), TimeUnit.SECONDS)} greater than $maxBracketTime")
@@ -54,17 +54,22 @@ class MatchMakingBracket(step: Int, maxBracketTime: FiniteDuration) extends Acto
       })
       if (queue.isEmpty) timers.cancelAll()
 
+    case MatchMaking.RemovePlayer(player) => queue.dequeueFirst(_.player.id == player.id)
   }
 
-  def doMatch(q: mutable.Queue[MatchMakingEntry], _step: Int, found: Option[(MatchMakingEntry, MatchMakingEntry)], notFound: List[MatchMakingEntry]): (Option[(MatchMakingEntry, MatchMakingEntry)], List[MatchMakingEntry]) = {
+  def doMatch(q: mutable.Queue[MatchMakingEntry], _step: Int,
+              found: Option[(MatchMakingEntry, MatchMakingEntry)],
+              notFound: List[MatchMakingEntry]): (Option[(MatchMakingEntry, MatchMakingEntry)], List[MatchMakingEntry]) = {
     if (found.isDefined || q.isEmpty) return (found -> notFound)
     val base = q.dequeue()
     val _found = findMatch(base, q, _step)
     doMatch(q, _step, _found, if (_found.isEmpty) base :: notFound else notFound)
   }
 
-  private def findMatch(base: MatchMakingEntry, q: mutable.Queue[MatchMakingEntry], _step: Int): Option[(MatchMakingEntry, MatchMakingEntry)] =
-    q.dequeueFirst(entry => entry.playerId != base.playerId && subs(entry.playerMMR, base.playerMMR) < _step)
+  private def findMatch(base: MatchMakingEntry,
+                        q: mutable.Queue[MatchMakingEntry],
+                        _step: Int): Option[(MatchMakingEntry, MatchMakingEntry)] =
+    q.dequeueFirst(entry => entry.player != base.player && subs(entry.playerMMR, base.playerMMR) < _step)
       .map(entry => entry -> base)
 
   def subs(a: Long, b: Long): Long = Math.max(a, b) - Math.min(a, b)

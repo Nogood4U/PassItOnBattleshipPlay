@@ -21,6 +21,6 @@ GET         /auth/providers                     @controllers.HomeController.prov
 +nocsrf
 PUT         /player/:playerId                   @controllers.HomeController.updatePlayer(playerId)
 
-GET         /socket                             @controllers.WebSocketController.ws
+GET         /socket/:uid                        @controllers.WebSocketController.ws(uid)
 
 POST        /game/matchmaking                   @controllers.GameController.joinMatchMaking

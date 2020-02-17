@@ -1,0 +1,29 @@
+---
+version: '3.7'
+
+services:
+  mongodb:
+    image: mongo:latest
+    restart: always
+    container_name: "mongodb"
+    environment:
+      - MONGO_DATA_DIR=/data/db
+      - MONGO_LOG_DIR=/dev/null
+    ports:
+      - 27017:27017
+
+  mysqldb:
+    image: mysql:5.7
+    restart: always
+    container_name: mysqldb
+    ports:
+      - 13306:3306
+    environment:
+      MYSQL_DATABASE: 'db'
+      # So you don't have to use root, but you can if you like
+      MYSQL_USER: 'mysqlDev'
+      # You can use whatever password you like
+      MYSQL_PASSWORD: 'mysqlDev'
+      # Password for root access
+      MYSQL_ROOT_PASSWORD: 'password'
+    command: mysqld --sql_mode="ansi_quotes"

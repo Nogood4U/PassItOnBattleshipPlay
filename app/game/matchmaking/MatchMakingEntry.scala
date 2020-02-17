@@ -1,5 +1,6 @@
 package game.matchmaking
 
 import akka.actor.ActorRef
+import models.BattlePlayer
 
-case class MatchMakingEntry(playerId: Long, playerMMR: Long, player: ActorRef, timestamp: Long)
+case class MatchMakingEntry(player: BattlePlayer, playerMMR: Long, playerActor: ActorRef, timestamp: Long)

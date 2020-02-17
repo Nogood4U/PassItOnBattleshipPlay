@@ -2,21 +2,23 @@ package services
 
 import java.util.concurrent.TimeUnit
 
-import akka.actor.ActorSystem
-import game.model.GameServer.AddPlayer
-import game.model.OnlinePlayer
-import javax.inject.{Inject, Singleton}
+import akka.actor.{ActorRef, ActorSystem}
+import akka.pattern.ask
+import akka.util.Timeout
+import game.player.OnlinePlayer
+import game.server.GameServer.AddPlayer
+import javax.inject.Inject
 import models.{BattlePlayer, Tables}
 import play.api.db.slick.{DatabaseConfigProvider, HasDatabaseConfigProvider}
-import slick.jdbc.JdbcProfile
 import slick.jdbc.H2Profile.api._
+import slick.jdbc.JdbcProfile
 
-import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits._
-import scala.concurrent.duration.FiniteDuration
-
+import scala.concurrent.Future
+import scala.concurrent.duration.{FiniteDuration, _}
 
 class BattlePlayerService @Inject()(protected val dbConfigProvider: DatabaseConfigProvider) extends HasDatabaseConfigProvider[JdbcProfile] {
+  implicit val timeout: Timeout = Timeout(3.seconds)
 
   def saveBattlePlayer(player: BattlePlayer): Future[BattlePlayer] = {
     db.run(
@@ -32,14 +34,27 @@ class BattlePlayerService @Inject()(protected val dbConfigProvider: DatabaseConf
     player <- Tables.battlePlayers if player.battleUserInfoId === authId
   } yield player).result.headOption)
 
-  def getOrCreateActor(player: BattlePlayer)(implicit actorSystem: ActorSystem) =
+  def getOrCreateActor(player: BattlePlayer)(implicit actorSystem: ActorSystem): Future[ActorRef] =
     actorSystem
       .actorSelection(s"/user/Player_${player.id}")
       .resolveOne(FiniteDuration(2, TimeUnit.SECONDS))
-      .recover { case _ =>
-        val actorRef = actorSystem.actorOf(OnlinePlayer.props(player), s"Player_${player.id}")
-        actorSystem.actorSelection(s"/user/Server_Main") // will be changed
-          .resolveOne(FiniteDuration(1, TimeUnit.MINUTES)).foreach(_ ! AddPlayer(actorRef, player))
-        actorRef
-      }
+      .recover { case _ => actorSystem.actorOf(OnlinePlayer.props(player), s"Player_${player.id}") }
+
+  def joinServer(player: BattlePlayer, playerActor: ActorRef)(implicit actorSystem: ActorSystem): Future[ActorRef] = {
+    actorSystem.actorSelection(s"/user/Server_Main") // will be changed
+      .resolveOne(FiniteDuration(1, TimeUnit.MINUTES))
+      .map(server => {
+        server ! AddPlayer(playerActor, player)
+        playerActor
+      })
+  }
+
+  def getPlayerStatus(player: BattlePlayer)(implicit actorSystem: ActorSystem): Future[OnlinePlayer.PlayerStatus] =
+    for {
+      actor <- getOrCreateActor(player)
+      result <- actor ? OnlinePlayer.PlayerStatus(player, None)
+    } yield result match {
+      case msg: OnlinePlayer.PlayerStatus => msg
+    }
+
 }
