@@ -1,23 +1,17 @@
 package controllers
 
-import java.util.concurrent.TimeUnit
-
 import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem}
 import akka.stream.scaladsl._
 import akka.stream.{Materializer, OverflowStrategy}
 import com.mohiva.play.silhouette.api.{HandlerResult, Silhouette}
 import game.player.OnlinePlayer
-import game.server.GameServer.AddPlayer
 import javax.inject.Inject
-import models.BattlePlayer
 import org.reactivestreams.Publisher
 import play.api.libs.json.{JsValue, Json}
 import play.api.mvc._
-import play.http.websocket.Message.Pong
 import services.BattlePlayerService
 
-import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{ExecutionContext, Future}
 
 class

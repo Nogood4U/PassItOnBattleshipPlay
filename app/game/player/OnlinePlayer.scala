@@ -32,7 +32,11 @@ class OnlinePlayer(player: BattlePlayer) extends Actor {
 
     case j: JsValue if (j \ "disconnected").toOption.isDefined => self ! Disconnected()
 
-    case StatusChange(status) => println(status);this.status = status
+    case StatusChange(status) => println(status); this.status = status
+
+    case GameRoom.GameCancelled(gameId) => out.map(_ ! Json.obj("canceled" -> gameId))
+
+    case GameRoom.GameStarted(gameId) => out.map(_ ! Json.obj("started" -> gameId))
 
     case e => e match {
       case Failure(f) => f.printStackTrace()

@@ -47,7 +47,21 @@ class GameServer extends Actor {
       val gameActor = context.actorOf(GameRoom.props(gameId, p1, p2), s"Game-${gameId}")
       games.put(gameId, gameActor)
       gameActor ! GameRoom.StartGame()
+
+    case RejectGame(player, gameId) =>
+      val gameActor = context.child(s"Game-${gameId}")
+      gameActor.foreach(_ ! GameRoom.PlayerRejected(player))
+      sender() ! 1
+
+    case AcceptGame(player, gameId) =>
+      val gameActor = context.child(s"Game-${gameId}")
+      gameActor.foreach(_ ! GameRoom.PlayerAccepted(player))
+      sender() ! 1
+
+    case CancelGame(gameId) =>
+      games.remove(gameId).foreach(_ ! PoisonPill)
   }
+
 }
 
 object GameServer {
@@ -60,15 +74,23 @@ object GameServer {
 
   sealed trait ToPlayers
 
+  sealed trait GameRequestMessage
+
   case class AddPlayer(player: ActorRef, battlePlayer: BattlePlayer) extends FromPlayers
 
   case class AddedPlayer(serverSettings: Map[String, String]) extends ToPlayers
 
   case class UpdateSettings(serverSettings: Map[String, String]) extends FromPlayers
 
-  case class JoinServerMatchMaking(player: BattlePlayer)
+  case class JoinServerMatchMaking(player: BattlePlayer) extends GameRequestMessage
 
   case class RemovePlayer(battlePlayer: BattlePlayer) extends FromPlayers
+
+  case class AcceptGame(player: BattlePlayer, gameId: String) extends GameRequestMessage
+
+  case class RejectGame(player: BattlePlayer, gameId: String) extends GameRequestMessage
+
+  case class CancelGame(gameId: String)
 
 }
 
