@@ -47,10 +47,10 @@ WebSocketController @Inject()(cc: ControllerComponents,
     import scala.concurrent.duration._
     // We read from sink
     // Play read from source and sends to client
-
+    val disconnectedMessage = "{\"disconnected_socket\":true}"
     // Flow1 - Sends data that gets to ActorRef to playerActor
     val mySource = Source.actorRef[String](100, OverflowStrategy.dropTail)
-    val mySink = Sink.actorRef(playerActor, "{\"disconnected\":true}")
+    val mySink = Sink.actorRef(playerActor, disconnectedMessage)
     //parse JsonInto ProperMessages
     val flow: Flow[String, JsValue, NotUsed] = Flow[String].map(data => Json.parse(data)) //map to Actor Message
     // ActorRef = sink to send to play
@@ -68,7 +68,7 @@ WebSocketController @Inject()(cc: ControllerComponents,
 
     playerActor ! OnlinePlayer.UpdateOutput(both._1)
 
-    Flow.fromSinkAndSourceCoupled(Sink.actorRef[String](g._1, "{\"disconnected\":true}"), Source.fromPublisher[String](both._2)
+    Flow.fromSinkAndSourceCoupled(Sink.actorRef[String](g._1, disconnectedMessage), Source.fromPublisher[String](both._2)
       .keepAlive(1.minutes, () => "{}"))
   }
 

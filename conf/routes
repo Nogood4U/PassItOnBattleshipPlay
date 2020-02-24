@@ -26,3 +26,5 @@ POST        /game/matchmaking                   @controllers.GameController.join
 POST        /game/reject/:gameId                @controllers.GameController.rejectGameRequest(gameId)
 
 POST        /game/accept/:gameId                @controllers.GameController.acceptGameRequest(gameId)
+
+POST        /game/ready                         @controllers.GameController.readyCheck()

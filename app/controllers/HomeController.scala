@@ -1,10 +1,11 @@
 package controllers
 
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 
 import akka.actor.ActorSystem
 import auth.config.AuthBattleUserMongoService
+import cats.data.OptionT
+import cats.implicits._
 import com.mohiva.play.silhouette.api.actions.SecuredRequest
 import services.BattlePlayerService
 import com.mohiva.play.silhouette.api._
@@ -12,7 +13,7 @@ import com.mohiva.play.silhouette.api.services.AuthenticatorService
 import com.mohiva.play.silhouette.impl.authenticators.JWTAuthenticator
 import com.mohiva.play.silhouette.impl.providers.{OAuth2Info, OAuth2Provider}
 import controllers.Roles.{AdminRole, Role, UserRole}
-import game.server.GameServer
+import game.player.OnlinePlayer.Disconnected
 import javax.inject._
 import models.BattlePlayer
 import play.api.db.slick.DatabaseConfigProvider
@@ -21,9 +22,6 @@ import play.api.mvc._
 
 import scala.concurrent.ExecutionContext.Implicits._
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
-import cats.data.OptionT
-import cats.implicits._
 
 
 /**
@@ -48,11 +46,9 @@ class HomeController @Inject()(cc: ControllerComponents,
    * a path of `/`.
    */
 
-  implicit val roleWrites = new Writes[Roles.Role] {
-    override def writes(o: Role): JsValue = JsString(o.name)
-  }
-  implicit val userWrites = Json.writes[BattleUser]
-  implicit val playerWrites = Json.writes[BattlePlayer]
+  implicit val roleWrites: Writes[Role] = (o: Role) => JsString(o.name)
+  implicit val userWrites: OWrites[BattleUser] = Json.writes[BattleUser]
+  implicit val playerWrites: OWrites[BattlePlayer] = Json.writes[BattlePlayer]
 
   def index: Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
     (for {
@@ -125,14 +121,15 @@ class HomeController @Inject()(cc: ControllerComponents,
           authenticator <- authenticatorService.create(profile.loginInfo)
           value <- authenticatorService.init(authenticator)
           result <- authenticatorService.embed(value, Redirect("http://localhost:4200/"))
-          _ <- battlePlayerService.getBattlePlayer(user.loginInfo.providerKey.toString).map {
-            case Some(value) => Future.successful(null)
+          futurePlayer <- battlePlayerService.getBattlePlayer(user.loginInfo.providerKey.toString).map {
+            case Some(value) => Future.successful(value)
             case None => battlePlayerService.saveBattlePlayer(
               BattlePlayer(0, user.firstName.getOrElse(UUID.randomUUID().toString), 1400, user.loginInfo.providerKey.toString))
           }
+          player <- futurePlayer
+          _ <- battlePlayerService.getOrCreateActor(player)
         } yield {
           eventBus.publish(LoginEvent(user, request))
-          //looks weird af
           result.withCookies(Cookie("JWT", value, httpOnly = true, domain = Some("localhost")))
         }
       }
@@ -140,13 +137,12 @@ class HomeController @Inject()(cc: ControllerComponents,
   }
 
   def signOut: Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
-    battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey)
-      .map(player => {
-        player.map(_p => {
-          actorSystem.actorSelection(s"/user/Server_Main")
-            .resolveOne(FiniteDuration(1, TimeUnit.MINUTES)).foreach(_ ! GameServer.RemovePlayer(_p))
-        })
-      }).recover {
+    val opt = for {
+      player <- OptionT(battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey))
+      actor <- OptionT.liftF(battlePlayerService.getOrCreateActor(player))
+    } yield actor ! Disconnected()
+
+    opt.value.recover {
       case e => e.printStackTrace(); NotFound
     }
     eventBus.publish(LogoutEvent(request.identity, request))

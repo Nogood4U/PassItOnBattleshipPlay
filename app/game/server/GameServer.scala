@@ -6,8 +6,7 @@ import java.util.concurrent.TimeUnit
 import akka.actor.{Actor, ActorRef, PoisonPill, Props}
 import game.matchmaking.MatchMaking
 import game.matchmaking.MatchMaking.{InitMatchMaking, JoinMatchMaking}
-import game.player.OnlinePlayer
-import game.server.GameRoom.StartGame
+import game.player.{GAME_REQUEST, OnlinePlayer}
 import game.server.GameServer._
 import models.BattlePlayer
 
@@ -47,6 +46,8 @@ class GameServer extends Actor {
       val gameActor = context.actorOf(GameRoom.props(gameId, p1, p2), s"Game-${gameId}")
       games.put(gameId, gameActor)
       gameActor ! GameRoom.StartGame()
+      player2.playerActor ! OnlinePlayer.StatusChange(GAME_REQUEST)
+      player1.playerActor ! OnlinePlayer.StatusChange(GAME_REQUEST)
 
     case RejectGame(player, gameId) =>
       val gameActor = context.child(s"Game-${gameId}")
@@ -56,7 +57,8 @@ class GameServer extends Actor {
     case AcceptGame(player, gameId) =>
       val gameActor = context.child(s"Game-${gameId}")
       gameActor.foreach(_ ! GameRoom.PlayerAccepted(player))
-      sender() ! 1
+      gameActor.foreach(sender ! _)
+
 
     case CancelGame(gameId) =>
       games.remove(gameId).foreach(_ ! PoisonPill)
@@ -82,9 +84,9 @@ object GameServer {
 
   case class UpdateSettings(serverSettings: Map[String, String]) extends FromPlayers
 
-  case class JoinServerMatchMaking(player: BattlePlayer) extends GameRequestMessage
-
   case class RemovePlayer(battlePlayer: BattlePlayer) extends FromPlayers
+
+  case class JoinServerMatchMaking(player: BattlePlayer) extends GameRequestMessage
 
   case class AcceptGame(player: BattlePlayer, gameId: String) extends GameRequestMessage
 

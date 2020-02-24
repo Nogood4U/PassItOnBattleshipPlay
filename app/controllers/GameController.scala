@@ -4,10 +4,12 @@ import java.util.concurrent.TimeUnit
 
 import akka.actor.ActorSystem
 import akka.pattern._
+import cats.data.OptionT
+import cats.implicits._
 import com.mohiva.play.silhouette.api.Silhouette
 import com.mohiva.play.silhouette.api.actions.SecuredRequest
 import game.player._
-import game.server.GameServer.{AcceptGame, GameRequestMessage, JoinServerMatchMaking, RejectGame}
+import game.server.GameRoom
 import javax.inject.Inject
 import models.BattlePlayer
 import play.api.libs.json._
@@ -58,39 +60,47 @@ class GameController @Inject()(cc: ControllerComponents,
     }
   }
 
+  def readyCheck(): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
+    val placeResult = request.body.asJson
+    (for {
+      jsonData <- OptionT(Future.successful(placeResult))
+      player <- OptionT(battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey))
+      status <- OptionT.liftF(doSendGameRequestMessage(player, GameRoom.BoardAdded(player, jsonData)))
+    } yield status).value.map {
+      case Some(value) => value
+      case None => NotFound
+    }.recover {
+      case _ => InternalServerError
+    }
+  }
 
   private def doJoinMatchMaking(player: BattlePlayer) = {
     val playerActorFuture = battlePlayerService.getOrCreateActor(player)
-    val serverActorFuture = actorSystem.actorSelection(s"/user/Server_Main")
-      .resolveOne(FiniteDuration(1, TimeUnit.MINUTES))
 
     (for {
-      _ <- playerActorFuture
-      serverActor <- serverActorFuture
+      playerActor <- playerActorFuture
     } yield {
-      (serverActor ? JoinServerMatchMaking(player)) (FiniteDuration(10, TimeUnit.SECONDS)).mapTo[Int]
+      (playerActor ? OnlinePlayer.JoinServerMatchMaking()) (FiniteDuration(10, TimeUnit.SECONDS)).mapTo[Int]
         .map(_ => Ok)
         .recover { case _ => InternalServerError }
     }).flatten
   }
 
   private def doRejectGameRequest(player: BattlePlayer, requestId: String) = {
-    doSendGameRequestMessage(player, requestId, RejectGame(player, requestId))
+    doSendGameRequestMessage(player, OnlinePlayer.RejectGame(requestId))
   }
 
   private def doAcceptGameRequest(player: BattlePlayer, requestId: String) = {
-    doSendGameRequestMessage(player, requestId, AcceptGame(player, requestId))
+    doSendGameRequestMessage(player, OnlinePlayer.AcceptGame(requestId))
   }
 
-  private def doSendGameRequestMessage(player: BattlePlayer, requestId: String, f: => GameRequestMessage) = {
+  private def doSendGameRequestMessage(player: BattlePlayer, f: => Any) = {
     val playerActorFuture = battlePlayerService.getOrCreateActor(player)
-    val serverActorFuture = actorSystem.actorSelection(s"/user/Server_Main")
-      .resolveOne(FiniteDuration(1, TimeUnit.MINUTES))
+
     (for {
-      _ <- playerActorFuture
-      serverActor <- serverActorFuture
+      playerActor <- playerActorFuture
     } yield {
-      (serverActor ? f) (FiniteDuration(10, TimeUnit.SECONDS)).mapTo[Int]
+      (playerActor ? f) (FiniteDuration(10, TimeUnit.SECONDS)).mapTo[Int]
         .map(_ => Ok)
         .recover { case _ => InternalServerError }
     }).flatten
