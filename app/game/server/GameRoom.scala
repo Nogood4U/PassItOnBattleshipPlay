@@ -46,7 +46,7 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
   def gameStarted: Receive = {
     case GameRoom.BoardAdded(player, boardData) =>
       val newState = (for {
-        pieces <- BoardDataParser.parse(boardData)
+        pieces <- BoardDataParser.parseBoard(boardData)
         state <- gameState
       } yield {
         val gamePieces = pieces.map(piece => {
@@ -59,25 +59,54 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         val newEntry = gamePieces.foldLeft(playerEntry)((entry, gamePiece) => GameLogic.placeShip(entry, gamePiece))
         Some(state.setEntry(player, newEntry))
       }).flatten
-
       newState match {
-        case st@Some(value) =>
+        case st@Some(state) =>
           gameState = st
+          sendStateupdate(st)
           sender() ! 1
+          if (state.p1.ships.size >= 9 && state.p2.ships.size >= 9)
+            self ! StartBattle()
+
         case None => sender() ! 0
       }
-      gameState.foreach(state => {
-        if (state.p1.ships.size >= 9 && state.p2.ships.size >= 9)
-          self ! StartBattle()
-      })
+
+    case GameRoom.AddPiece(player, pieceData) =>
+      val newState = for {
+        piece <- BoardDataParser.parsePiece(pieceData)
+        state <- gameState
+        if state.p1.ships.size < 9 && state.p2.ships.size < 9
+      } yield {
+        val entry = state.getEntry(player)
+        val boxes = for {
+          position <- piece.positions
+        } yield GameBox(position.x, position.y, hit = false)
+        val newEntry = GameLogic.placeShip(entry, GamePiece(boxes, alive = true))
+        state.setEntry(player, newEntry)
+      }
+      newState match {
+        case st@Some(state) =>
+          gameState = st
+          sendStateupdate(st)
+          sender() ! 1
+          if (state.p1.ships.size >= 9 && state.p2.ships.size >= 9)
+            self ! StartBattle()
+
+        case None => sender() ! 0
+      }
 
     case StartBattle() => println("START TURNS AND WHATNOT!")
+  }
+
+  private def sendStateupdate(gameState: Option[GameState]) {
+    gameState.foreach(state => player1.playerActor ! GameRoom.GameStateUpdate(state))
   }
 }
 
 object GameRoom {
 
   trait GameRoomMessage
+
+  abstract class GameRoomUpdate(val gameState: GameState)
 
   def props(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) = Props(classOf[GameRoom], gameId, player1, player2)
 
@@ -96,5 +125,9 @@ object GameRoom {
   case class BoardAdded(player: BattlePlayer, boardData: JsValue) extends GameRoomMessage
 
   case class StartBattle() extends GameRoomMessage
+
+  case class AddPiece(player: BattlePlayer, pieceData: JsValue) extends GameRoomMessage
+
+  case class GameStateUpdate(override val gameState: GameState) extends GameRoomUpdate(gameState)
 
 }

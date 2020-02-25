@@ -6,12 +6,15 @@ import akka.actor.{Actor, ActorRef, Props}
 import game.player.OnlinePlayer.{AcceptGame, Disconnected, JoinServer, JoinServerMatchMaking, RejectGame, StatusChange, UpdateOutput}
 import game.server.{GameRoom, GameServer}
 import models.BattlePlayer
-import play.api.libs.json.{JsValue, Json, OWrites}
+import play.api.libs.json.{JsString, JsValue, Json, OWrites, Reads, Writes}
 
 import scala.util.Failure
 import akka.pattern._
 import akka.util.Timeout
-import game.server.GameRoom.GameRoomMessage
+import controllers.BattleUser
+import controllers.Roles.Role
+import game.server.GameRoom.{GameRoomMessage, GameRoomUpdate}
+import services.{GameBoard, GameBox, GameEntry, GamePiece, GameState, Piece, Position}
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -25,9 +28,9 @@ class OnlinePlayer(player: BattlePlayer) extends Actor {
 
   import context._
 
-  implicit val playerWrites: OWrites[BattlePlayer] = Json.writes[BattlePlayer]
-
   var gameRoomActor: Option[ActorRef] = None
+
+  import services.BoardDataParser._
 
   override def receive: Receive = {
     case StatusChange(status) =>
@@ -86,6 +89,17 @@ class OnlinePlayer(player: BattlePlayer) extends Actor {
     case msg: GameRoomMessage =>
       val _sender = sender()
       gameRoomActor.foreach(ar => ar ? msg foreach (rt => _sender ! rt))
+
+    case msg: GameRoomUpdate =>
+      val filteredEntries = List(msg.gameState.p1, msg.gameState.p2)
+        .map(entry => {
+          if (entry.player != this.player) {
+            val newShipsList = entry.ships.map(ship => ship.copy(boxes = List.empty))
+            entry.copy(ships = newShipsList)
+          } else entry
+        })
+      val toSend = Json.toJson(msg.gameState.copy(p1 = filteredEntries.head, p2 = filteredEntries.last))
+      out.foreach(ar => ar ! toSend)
 
     case e => e match {
       case Failure(f) => f.printStackTrace()

@@ -74,6 +74,21 @@ class GameController @Inject()(cc: ControllerComponents,
     }
   }
 
+  def addPiece(): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
+    val placeResult = request.body.asJson
+    (for {
+      jsonData <- OptionT(Future.successful(placeResult))
+      player <- OptionT(battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey))
+      status <- OptionT.liftF(doSendGameRequestMessage(player, GameRoom.AddPiece(player, jsonData)))
+    } yield status).value.map {
+      case Some(value) => value
+      case None => NotFound
+    }.recover {
+      case _ => InternalServerError
+    }
+  }
+
+
   private def doJoinMatchMaking(player: BattlePlayer) = {
     val playerActorFuture = battlePlayerService.getOrCreateActor(player)
 

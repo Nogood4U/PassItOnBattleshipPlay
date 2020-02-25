@@ -28,3 +28,5 @@ POST        /game/reject/:gameId                @controllers.GameController.reje
 POST        /game/accept/:gameId                @controllers.GameController.acceptGameRequest(gameId)
 
 POST        /game/ready                         @controllers.GameController.readyCheck()
+
+POST        /game/addPiece                      @controllers.GameController.addPiece()

@@ -44,7 +44,6 @@ class MatchMakingBracket(step: Int, maxBracketTime: FiniteDuration) extends Acto
       queue.enqueue(matchResult._2: _*)
 
     case ClearBracket() =>
-      //      println(s"cleaning up bracket $step for $queue")
       queue.dequeueAll(entry => {
         val passed = System.currentTimeMillis() - entry.timestamp
         println(s"${FiniteDuration(TimeUnit.MILLISECONDS.toSeconds(passed), TimeUnit.SECONDS)} greater than $maxBracketTime")
