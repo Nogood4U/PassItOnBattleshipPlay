@@ -14,13 +14,14 @@ object BoardDataParser {
   implicit val roleWrites: Writes[Role] = (o: Role) => JsString(o.name)
   implicit val userWrites: OWrites[BattleUser] = Json.writes[BattleUser]
   implicit val playerWrites: OWrites[BattlePlayer] = Json.writes[BattlePlayer]
-  implicit val gameStateWrites: OWrites[GameState] = Json.writes[GameState]
-  implicit val gameEntryWrites: OWrites[GameEntry] = Json.writes[GameEntry]
-  implicit val gameBoardWrites: OWrites[GameBoard] = Json.writes[GameBoard]
-  implicit val gameBoxWrites: OWrites[GameBox] = Json.writes[GameBox]
-  implicit val gamePieceWrites: OWrites[GamePiece] = Json.writes[GamePiece]
   implicit val positionWrites: OWrites[Position] = Json.writes[Position]
   implicit val pieceWrites: OWrites[Piece] = Json.writes[Piece]
+  implicit val gameBoxWrites: OWrites[GameBox] = Json.writes[GameBox]
+  implicit val gamePieceWrites: OWrites[GamePiece] = Json.writes[GamePiece]
+  implicit val gameBoardWrites: OWrites[GameBoard] = Json.writes[GameBoard]
+  implicit val gameEntryWrites: OWrites[GameEntry] = Json.writes[GameEntry]
+  implicit val gameStatusWrites: Writes[GameStatus.Status] = (o: GameStatus.Status) => JsString(o.status)
+  implicit val gameStateWrites: OWrites[GameState] = Json.writes[GameState]
 
   def parseBoard(json: JsValue): Option[List[Piece]] = json.validate[List[Piece]] match {
     case JsSuccess(value, path) => Some(value)

@@ -4,29 +4,33 @@
 # ~~~~
 
 # An example controller showing a sample home page
-GET         /                                   controllers.HomeController.index
+GET           /                                   controllers.HomeController.index
 
 # Map static resources from the /public folder to the /assets URL path
-GET         /assets/*file                       controllers.Assets.versioned(path="/public", file: Asset)
+GET           /assets/*file                       controllers.Assets.versioned(path="/public", file: Asset)
 
-GET         /auth/authenticate/:provider        @controllers.HomeController.authenticate(provider)
-
-+nocsrf
-POST        /auth/logout                        @controllers.HomeController.signOut
-
-GET         /auth/providers                     @controllers.HomeController.providerList
+GET           /auth/authenticate/:provider        @controllers.HomeController.authenticate(provider)
 
 +nocsrf
-PUT         /player/:playerId                   @controllers.HomeController.updatePlayer(playerId)
+POST          /auth/logout                        @controllers.HomeController.signOut
 
-GET         /socket/:uid                        @controllers.WebSocketController.ws(uid)
+GET           /auth/providers                     @controllers.HomeController.providerList
 
-POST        /game/matchmaking                   @controllers.GameController.joinMatchMaking
++nocsrf
+PUT           /player/:playerId                   @controllers.HomeController.updatePlayer(playerId)
 
-POST        /game/reject/:gameId                @controllers.GameController.rejectGameRequest(gameId)
+GET           /socket/:uid                        @controllers.WebSocketController.ws(uid)
 
-POST        /game/accept/:gameId                @controllers.GameController.acceptGameRequest(gameId)
+POST          /game/matchmaking                   @controllers.GameController.joinMatchMaking
 
-POST        /game/ready                         @controllers.GameController.readyCheck()
+DELETE        /game/matchmaking/cancel            @controllers.GameController.cancelMatchMaking
 
-POST        /game/addPiece                      @controllers.GameController.addPiece()
+POST          /game/reject/:gameId                @controllers.GameController.rejectGameRequest(gameId)
+
+POST          /game/accept/:gameId                @controllers.GameController.acceptGameRequest(gameId)
+
+POST          /game/ready                         @controllers.GameController.readyCheck()
+
+POST          /game/addPiece                      @controllers.GameController.addPiece()
+
+POST          /game/update                        @controllers.GameController.requestServerUpdate()

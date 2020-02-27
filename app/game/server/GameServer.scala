@@ -39,6 +39,10 @@ class GameServer extends Actor {
       context.child(s"PlayerProxy-${player.id}").foreach(child => mmActor ! JoinMatchMaking(player, child))
       sender() ! 1
 
+    case CancelServerMatchMaking(player) =>
+      mmActor ! MatchMaking.RemovePlayer(player)
+      sender() ! 1
+
     case MatchMaking.MatchFound(player1, player2, bracket) =>
       val gameId = UUID.randomUUID().toString
       val p1 = GameRoomEntry(player1.player, player1.playerActor)
@@ -87,6 +91,8 @@ object GameServer {
   case class RemovePlayer(battlePlayer: BattlePlayer) extends FromPlayers
 
   case class JoinServerMatchMaking(player: BattlePlayer) extends GameRequestMessage
+
+  case class CancelServerMatchMaking(player: BattlePlayer) extends GameRequestMessage
 
   case class AcceptGame(player: BattlePlayer, gameId: String) extends GameRequestMessage
 

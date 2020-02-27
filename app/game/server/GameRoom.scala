@@ -1,5 +1,7 @@
 package game.server
 
+import java.util.UUID
+
 import akka.actor.{Actor, ActorRef, Props}
 import game.server.GameRoom._
 import models.BattlePlayer
@@ -50,10 +52,11 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         state <- gameState
       } yield {
         val gamePieces = pieces.map(piece => {
+          val pieceId = UUID.randomUUID().toString
           val boxes = for {
             position <- piece.positions
-          } yield GameBox(position.x, position.y, hit = false)
-          GamePiece(boxes, alive = true)
+          } yield GameBox(position.x, position.y, hit = false, Some(pieceId))
+          GamePiece(pieceId, boxes, alive = true)
         })
         val playerEntry = state.getEntry(player)
         val newEntry = gamePieces.foldLeft(playerEntry)((entry, gamePiece) => GameLogic.placeShip(entry, gamePiece))
@@ -74,13 +77,14 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
       val newState = for {
         piece <- BoardDataParser.parsePiece(pieceData)
         state <- gameState
-        if state.p1.ships.size < 9 && state.p2.ships.size < 9
+        if state.getEntry(player).ships.size < 9
       } yield {
+        val pieceId = UUID.randomUUID().toString
         val entry = state.getEntry(player)
         val boxes = for {
           position <- piece.positions
-        } yield GameBox(position.x, position.y, hit = false)
-        val newEntry = GameLogic.placeShip(entry, GamePiece(boxes, alive = true))
+        } yield GameBox(position.x, position.y, hit = false, Some(pieceId))
+        val newEntry = GameLogic.placeShip(entry, GamePiece(pieceId, boxes, alive = true))
         state.setEntry(player, newEntry)
       }
       newState match {
@@ -94,11 +98,17 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         case None => sender() ! 0
       }
 
+    case GameRoom.RequestStateUpdate() =>
+      sendStateupdate(gameState)
+
     case StartBattle() => println("START TURNS AND WHATNOT!")
   }
 
   private def sendStateupdate(gameState: Option[GameState]) {
-    gameState.foreach(state => player1.playerActor ! GameRoom.GameStateUpdate(state))
+    gameState.foreach(state => {
+      player1.playerActor ! GameRoom.GameStateUpdate(state)
+      player2.playerActor ! GameRoom.GameStateUpdate(state)
+    })
   }
 }
 
@@ -129,5 +139,7 @@ object GameRoom {
   case class AddPiece(player: BattlePlayer, pieceData: JsValue) extends GameRoomMessage
 
   case class GameStateUpdate(override val gameState: GameState) extends GameRoomUpdate(gameState)
+
+  case class RequestStateUpdate() extends GameRoomMessage
 
 }

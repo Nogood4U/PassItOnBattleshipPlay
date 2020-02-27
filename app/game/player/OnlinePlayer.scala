@@ -3,20 +3,16 @@ package game.player
 import java.util.concurrent.TimeUnit
 
 import akka.actor.{Actor, ActorRef, Props}
-import game.player.OnlinePlayer.{AcceptGame, Disconnected, JoinServer, JoinServerMatchMaking, RejectGame, StatusChange, UpdateOutput}
-import game.server.{GameRoom, GameServer}
-import models.BattlePlayer
-import play.api.libs.json.{JsString, JsValue, Json, OWrites, Reads, Writes}
-
-import scala.util.Failure
 import akka.pattern._
 import akka.util.Timeout
-import controllers.BattleUser
-import controllers.Roles.Role
+import game.player.OnlinePlayer._
 import game.server.GameRoom.{GameRoomMessage, GameRoomUpdate}
-import services.{GameBoard, GameBox, GameEntry, GamePiece, GameState, Piece, Position}
+import game.server.{GameRoom, GameServer}
+import models.BattlePlayer
+import play.api.libs.json.{JsValue, Json}
 
 import scala.concurrent.duration.FiniteDuration
+import scala.util.Failure
 
 class OnlinePlayer(player: BattlePlayer) extends Actor {
   private var status: OnlinePlayerStatus = ONLINE
@@ -70,6 +66,13 @@ class OnlinePlayer(player: BattlePlayer) extends Actor {
       if (status == ONLINE)
         server.foreach(s => (s ? GameServer.JoinServerMatchMaking(player)) map (_sender ! _))
       else sender() ! 1
+
+    case CancelServerMatchMaking() =>
+      val _sender = sender()
+      if (status == LOOKING_FOR_GAME) {
+        server.foreach(s => (s ? GameServer.CancelServerMatchMaking(player)) map (_sender ! _))
+        status = ONLINE
+      } else sender() ! 1
 
     case AcceptGame(gameId) =>
       val _sender = sender()
@@ -127,6 +130,8 @@ object OnlinePlayer {
   case class Disconnected()
 
   case class JoinServerMatchMaking()
+
+  case class CancelServerMatchMaking()
 
   case class AcceptGame(gameId: String)
 

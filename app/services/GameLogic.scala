@@ -5,21 +5,14 @@ import models.BattlePlayer
 object GameLogic {
 
   def createGameEntry(player: BattlePlayer, size: Int): GameEntry = {
-    val boxes = for {
-      x <- 0 to size
-      y <- 0 to size
-    } yield GameBox(x, y, hit = false)
-    GameEntry(player, GameBoard(boxes.toList), List())
+    GameEntry(player, GameBoard(List.empty), List())
   }
 
   def placeShip(entry: GameEntry, _ship: GamePiece): GameEntry = {
-    val newBoardBoxes = entry.board.boxes.map(b => {
-      if (_ship.boxes.exists(p => p.x == b.x && p.y == b.y))
-        b.copy(ship = Some(_ship))
-      else
-        b
+    val newBoardBoxes = _ship.boxes.map(b => {
+      b.copy(shipId = Some(_ship.id))
     })
-    val newBoard = entry.board.copy(boxes = newBoardBoxes)
+    val newBoard = entry.board.copy(boxes = newBoardBoxes ++ entry.board.boxes)
     entry.copy(board = newBoard, ships = _ship :: entry.ships)
   }
 
@@ -58,7 +51,8 @@ case class GameEntry(player: BattlePlayer,
                     )
 
 case class GameState(p1: GameEntry,
-                     p2: GameEntry) {
+                     p2: GameEntry,
+                     status: GameStatus.Status = GameStatus.PREPARING) {
   def getEntry(player: BattlePlayer): GameEntry = if (p1.player == player) p1 else p2
 
   def setEntry(player: BattlePlayer, newEntry: GameEntry): GameState =
@@ -70,10 +64,22 @@ case class GameState(p1: GameEntry,
 
 case class GameBoard(boxes: List[GameBox])
 
-case class GamePiece(boxes: List[GameBox], alive: Boolean)
+case class GamePiece(id: String, boxes: List[GameBox], alive: Boolean)
 
-case class GameBox(x: Int, y: Int, hit: Boolean, ship: Option[GamePiece] = None)
+case class GameBox(x: Int, y: Int, hit: Boolean, shipId: Option[String] = None)
 
 case class GameSummary(entry: GameEntry,
                        shipsAlive: List[(Int, Int)],
                        shipsKilled: List[(Int, Int)])
+
+object GameStatus {
+
+  sealed abstract class Status(val status: String)
+
+  case object PREPARING extends Status("PREPARING")
+
+  case object PLAYING extends Status("PLAYING")
+
+  case object COMPLETED extends Status("COMPLETED")
+
+}

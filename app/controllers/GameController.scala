@@ -42,6 +42,15 @@ class GameController @Inject()(cc: ControllerComponents,
     }
   }
 
+  def cancelMatchMaking: Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
+    battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey)
+      .flatMap(player =>
+        player.map(doCancelMatchMaking).getOrElse(Future.successful(NotFound))
+      ).recover {
+      case _ => NotFound
+    }
+  }
+
   def rejectGameRequest(requestId: String): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
     battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey)
       .flatMap(player =>
@@ -88,6 +97,18 @@ class GameController @Inject()(cc: ControllerComponents,
     }
   }
 
+  def requestServerUpdate(): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
+    (for {
+      player <- OptionT(battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey))
+      status <- OptionT.liftF(doSendGameMessage(player, GameRoom.RequestStateUpdate()))
+    } yield status).value.map {
+      case Some(value) => value
+      case None => NotFound
+    }.recover {
+      case _ => InternalServerError
+    }
+  }
+
 
   private def doJoinMatchMaking(player: BattlePlayer) = {
     val playerActorFuture = battlePlayerService.getOrCreateActor(player)
@@ -96,6 +117,18 @@ class GameController @Inject()(cc: ControllerComponents,
       playerActor <- playerActorFuture
     } yield {
       (playerActor ? OnlinePlayer.JoinServerMatchMaking()) (FiniteDuration(10, TimeUnit.SECONDS)).mapTo[Int]
+        .map(_ => Ok)
+        .recover { case _ => InternalServerError }
+    }).flatten
+  }
+
+  private def doCancelMatchMaking(player: BattlePlayer) = {
+    val playerActorFuture = battlePlayerService.getOrCreateActor(player)
+
+    (for {
+      playerActor <- playerActorFuture
+    } yield {
+      (playerActor ? OnlinePlayer.CancelServerMatchMaking()) (FiniteDuration(10, TimeUnit.SECONDS)).mapTo[Int]
         .map(_ => Ok)
         .recover { case _ => InternalServerError }
     }).flatten
@@ -119,6 +152,14 @@ class GameController @Inject()(cc: ControllerComponents,
         .map(_ => Ok)
         .recover { case _ => InternalServerError }
     }).flatten
+  }
+
+  private def doSendGameMessage(player: BattlePlayer, f: => Any) = {
+    val playerActorFuture = battlePlayerService.getOrCreateActor(player)
+
+    (for {
+      playerActor <- playerActorFuture
+    } yield playerActor ! f).map(_ => Ok)
   }
 
 }
