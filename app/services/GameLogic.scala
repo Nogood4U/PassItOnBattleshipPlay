@@ -48,6 +48,7 @@ object GameLogic {
 case class GameEntry(player: BattlePlayer,
                      board: GameBoard,
                      ships: List[GamePiece],
+                     ready: Boolean = false
                     )
 
 case class GameState(p1: GameEntry,

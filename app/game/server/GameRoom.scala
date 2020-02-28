@@ -46,31 +46,14 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
 
 
   def gameStarted: Receive = {
-    case GameRoom.BoardAdded(player, boardData) =>
-      val newState = (for {
-        pieces <- BoardDataParser.parseBoard(boardData)
+    case GameRoom.BoardReady(player) =>
+      for {
         state <- gameState
       } yield {
-        val gamePieces = pieces.map(piece => {
-          val pieceId = UUID.randomUUID().toString
-          val boxes = for {
-            position <- piece.positions
-          } yield GameBox(position.x, position.y, hit = false, Some(pieceId))
-          GamePiece(pieceId, boxes, alive = true)
-        })
-        val playerEntry = state.getEntry(player)
-        val newEntry = gamePieces.foldLeft(playerEntry)((entry, gamePiece) => GameLogic.placeShip(entry, gamePiece))
-        Some(state.setEntry(player, newEntry))
-      }).flatten
-      newState match {
-        case st@Some(state) =>
-          gameState = st
-          sendStateupdate(st)
-          sender() ! 1
-          if (state.p1.ships.size >= 9 && state.p2.ships.size >= 9)
-            self ! StartBattle()
-
-        case None => sender() ! 0
+        val newEntry = state.getEntry(player).copy(ready = true)
+        gameState = Some(state.setEntry(player, newEntry))
+        if (state.p1.ships.size >= 9 && state.p2.ships.size >= 9)
+          self ! StartBattle()
       }
 
     case GameRoom.AddPiece(player, pieceData) =>
@@ -92,8 +75,6 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
           gameState = st
           sendStateupdate(st)
           sender() ! 1
-          if (state.p1.ships.size >= 9 && state.p2.ships.size >= 9)
-            self ! StartBattle()
 
         case None => sender() ! 0
       }
@@ -101,7 +82,7 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
     case GameRoom.RequestStateUpdate() =>
       sendStateupdate(gameState)
 
-    case StartBattle() => println("START TURNS AND WHATNOT!")
+    case StartBattle() => println("START TURNS AND WHATNOT!") // become active battle
   }
 
   private def sendStateupdate(gameState: Option[GameState]) {
@@ -132,7 +113,7 @@ object GameRoom {
 
   case class GameStarted(gameId: String, enemy: BattlePlayer) extends GameRoomMessage
 
-  case class BoardAdded(player: BattlePlayer, boardData: JsValue) extends GameRoomMessage
+  case class BoardReady(player: BattlePlayer) extends GameRoomMessage
 
   case class StartBattle() extends GameRoomMessage
 
