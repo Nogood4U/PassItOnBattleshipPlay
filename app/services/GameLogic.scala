@@ -21,28 +21,26 @@ object GameLogic {
       boardBox <- entry.board.boxes
     } yield {
       if (boardBox.x == box.x && boardBox.y == box.y && !boardBox.hit)
-        box.copy(hit = true)
+        boardBox.copy(hit = true)
       else
-        box
+        boardBox
     }
     val newBoard = entry.board.copy(boxes = _boxList)
     entry.copy(board = newBoard)
-    syncShipStatus(entry)
+    syncShipStatus(entry, _boxList.filter(_.hit == true))
   }
 
-  private def syncShipStatus(entry: GameEntry): GameEntry = {
-    val _ships = (for {
-      ship <- entry.ships
-      box <- ship.boxes
-      boardBox <- entry.board.boxes
-      if boardBox.x == box.x && boardBox.y == box.y
-    } yield ship -> box.copy(hit = boardBox.hit))
-      .groupBy(_._1).mapValues(_.map(_._2))
-      .foldLeft(List[GamePiece]())((acc, elm) => elm._1.copy(boxes = elm._2) :: acc)
-
-    entry.copy(ships = _ships)
+  private def syncShipStatus(entry: GameEntry, hitBoxList: List[GameBox]): GameEntry = {
+    val newShips = entry.ships.map(ship => {
+      val newBoxes = for {
+        box <- ship.boxes
+        _box <- hitBoxList
+        if box.x == _box.x && box.y == _box.y && !box.hit
+      } yield box.copy(hit = true)
+      ship.copy(boxes = newBoxes)
+    })
+    entry.copy(ships = newShips)
   }
-
 }
 
 case class GameEntry(player: BattlePlayer,
@@ -56,8 +54,16 @@ case class GameState(p1: GameEntry,
                      status: GameStatus.Status = GameStatus.PREPARING) {
   def getEntry(player: BattlePlayer): GameEntry = if (p1.player == player) p1 else p2
 
+  def getEnemyEntry(player: BattlePlayer): GameEntry = if (p1.player != player) p1 else p2
+
   def setEntry(player: BattlePlayer, newEntry: GameEntry): GameState =
     if (p1.player == player)
+      this.copy(p1 = newEntry)
+    else
+      this.copy(p2 = newEntry)
+
+  def setEnemyEntry(player: BattlePlayer, newEntry: GameEntry): GameState =
+    if (p1.player != player)
       this.copy(p1 = newEntry)
     else
       this.copy(p2 = newEntry)

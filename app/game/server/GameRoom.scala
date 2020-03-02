@@ -6,7 +6,7 @@ import akka.actor.{Actor, ActorRef, Props}
 import game.server.GameRoom._
 import models.BattlePlayer
 import play.api.libs.json.JsValue
-import services.{BoardDataParser, GameBox, GameLogic, GamePiece, GameState}
+import services.{BoardDataParser, GameBox, GameLogic, GamePiece, GameState, GameStatus}
 
 import scala.collection.mutable
 
@@ -53,8 +53,11 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         val newEntry = state.getEntry(player).copy(ready = true)
         gameState = Some(state.setEntry(player, newEntry))
         if (state.p1.ships.size >= 9 && state.p2.ships.size >= 9)
-          self ! StartBattle()
+          context.become(battleStarted)
+        self ! StartBattle()
       }
+      sendStateupdate(gameState)
+      sender() ! 1
 
     case GameRoom.AddPiece(player, pieceData) =>
       val newState = for {
@@ -81,8 +84,25 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
 
     case GameRoom.RequestStateUpdate() =>
       sendStateupdate(gameState)
+  }
 
-    case StartBattle() => println("START TURNS AND WHATNOT!") // become active battle
+  def battleStarted: Receive = {
+    case StartBattle() =>
+      gameState = for {
+        state <- gameState
+      } yield {
+        state.copy(status = GameStatus.PLAYING)
+      }
+      sendStateupdate(gameState)
+
+    case HitBox(player, x, y) =>
+      gameState = for {
+        state <- gameState
+      } yield {
+        val entry = state.getEnemyEntry(player)
+        val newEnemyEntry = GameLogic.applyBoxHit(entry, GameBox(x, y, hit = true))
+        state.setEnemyEntry(player, newEnemyEntry)
+      }
   }
 
   private def sendStateupdate(gameState: Option[GameState]) {
@@ -118,6 +138,8 @@ object GameRoom {
   case class StartBattle() extends GameRoomMessage
 
   case class AddPiece(player: BattlePlayer, pieceData: JsValue) extends GameRoomMessage
+
+  case class HitBox(player: BattlePlayer, x: Int, y: Int) extends GameRoomMessage
 
   case class GameStateUpdate(override val gameState: GameState) extends GameRoomUpdate(gameState)
 
