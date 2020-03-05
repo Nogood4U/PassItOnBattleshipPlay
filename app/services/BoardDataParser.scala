@@ -19,6 +19,7 @@ object BoardDataParser {
   implicit val gameBoxWrites: OWrites[GameBox] = Json.writes[GameBox]
   implicit val gamePieceWrites: OWrites[GamePiece] = Json.writes[GamePiece]
   implicit val gameBoardWrites: OWrites[GameBoard] = Json.writes[GameBoard]
+  implicit val gameEntryStatusWrites: Writes[GameEntryStatus.Status] = (o: GameEntryStatus.Status) => JsString(o.status)
   implicit val gameEntryWrites: OWrites[GameEntry] = Json.writes[GameEntry]
   implicit val gameStatusWrites: Writes[GameStatus.Status] = (o: GameStatus.Status) => JsString(o.status)
   implicit val gameStateWrites: OWrites[GameState] = Json.writes[GameState]

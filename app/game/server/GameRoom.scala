@@ -6,7 +6,7 @@ import akka.actor.{Actor, ActorRef, Props}
 import game.server.GameRoom._
 import models.BattlePlayer
 import play.api.libs.json.JsValue
-import services.{BoardDataParser, GameBox, GameLogic, GamePiece, GameState, GameStatus}
+import services.{BoardDataParser, GameBox, GameEntryStatus, GameLogic, GamePiece, GameState, GameStatus}
 
 import scala.collection.mutable
 
@@ -47,17 +47,21 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
 
   def gameStarted: Receive = {
     case GameRoom.BoardReady(player) =>
+      val _sender = sender()
       for {
         state <- gameState
       } yield {
-        val newEntry = state.getEntry(player).copy(ready = true)
-        gameState = Some(state.setEntry(player, newEntry))
-        if (state.p1.ships.size >= 9 && state.p2.ships.size >= 9)
+        val newEntry = state.getEntry(player).copy(ready = true, status = GameEntryStatus.WAITING_FOR_OTHER_PLAYER)
+        val newState = state.setEntry(player, newEntry)
+        gameState = Some(newState)
+        if (newState.p1.ships.size >= 9 && newState.p1.ready && newState.p2.ships.size >= 9 && newState.p2.ready) {
           context.become(battleStarted)
-        self ! StartBattle()
+          self ! StartBattle()
+        } else {
+          sendStateupdate(gameState)
+        }
       }
-      sendStateupdate(gameState)
-      sender() ! 1
+      _sender ! 1
 
     case GameRoom.AddPiece(player, pieceData) =>
       val newState = for {
@@ -76,8 +80,8 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
       newState match {
         case st@Some(state) =>
           gameState = st
-          sendStateupdate(st)
           sender() ! 1
+          sendStateupdate(st)
 
         case None => sender() ! 0
       }
@@ -88,10 +92,15 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
 
   def battleStarted: Receive = {
     case StartBattle() =>
+      println("STARTING BATTLE!!")
       gameState = for {
         state <- gameState
       } yield {
-        state.copy(status = GameStatus.PLAYING)
+        state.copy(
+          status = GameStatus.PLAYING,
+          p1 = state.p1.copy(status = GameEntryStatus.READY),
+          p2 = state.p2.copy(status = GameEntryStatus.READY)
+        )
       }
       sendStateupdate(gameState)
 

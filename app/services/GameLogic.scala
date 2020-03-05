@@ -1,11 +1,12 @@
 package services
 
+import game.player.OnlinePlayer.PlayerStatus
 import models.BattlePlayer
 
 object GameLogic {
 
   def createGameEntry(player: BattlePlayer, size: Int): GameEntry = {
-    GameEntry(player, GameBoard(List.empty), List())
+    GameEntry(player, GameBoard(List.empty), List(), GameEntryStatus.PREPARING)
   }
 
   def placeShip(entry: GameEntry, _ship: GamePiece): GameEntry = {
@@ -46,6 +47,7 @@ object GameLogic {
 case class GameEntry(player: BattlePlayer,
                      board: GameBoard,
                      ships: List[GamePiece],
+                     status: GameEntryStatus.Status,
                      ready: Boolean = false
                     )
 
@@ -88,5 +90,17 @@ object GameStatus {
   case object PLAYING extends Status("PLAYING")
 
   case object COMPLETED extends Status("COMPLETED")
+
+}
+
+object GameEntryStatus {
+
+  sealed abstract class Status(val status: String)
+
+  case object PREPARING extends Status("PREPARING")
+
+  case object WAITING_FOR_OTHER_PLAYER extends Status("WAITING_FOR_OTHER_PLAYER")
+
+  case object READY extends Status("READY")
 
 }

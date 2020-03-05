@@ -38,6 +38,8 @@ class OnlinePlayer(player: BattlePlayer) extends Actor {
       out.foreach(_ ! Json.obj("providers" -> "test"))
       if (status == GAME_REQUEST) {
         out.map(_ ! Json.obj("request" -> gameRoomId))
+      } else if (status == PLAYING) {
+        self ! GameRoom.RequestStateUpdate()
       }
 
     case JoinServer(server) => this.server = Some(server)
@@ -59,7 +61,9 @@ class OnlinePlayer(player: BattlePlayer) extends Actor {
       out.foreach(_ ! Json.obj("canceled" -> gameId))
       status = ONLINE
 
-    case GameRoom.GameStarted(gameId, enemy) => out.map(_ ! Json.obj("started" -> gameId, "enemy" -> Json.toJson(enemy)))
+    case GameRoom.GameStarted(gameId, enemy) =>
+      status = PLAYING
+      out.map(_ ! Json.obj("started" -> gameId, "enemy" -> Json.toJson(enemy)))
 
     case JoinServerMatchMaking() =>
       val _sender = sender()
@@ -154,4 +158,6 @@ case object LOOKING_FOR_GAME extends OnlinePlayerStatus("LOOKING_FOR_GAME")
 case object GAME_REQUEST extends OnlinePlayerStatus("GAME_REQUEST")
 
 case object WAIT_FOR_PLAYERS extends OnlinePlayerStatus("WAIT_FOR_PLAYERS")
+
+case object PLAYING extends OnlinePlayerStatus("PLAYING")
 
