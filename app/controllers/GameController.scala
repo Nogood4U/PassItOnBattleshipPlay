@@ -25,10 +25,7 @@ class GameController @Inject()(cc: ControllerComponents,
                                silhouette: Silhouette[DefaultEnv])(implicit actorSystem: ActorSystem, exec: ExecutionContext) extends AbstractController(cc) {
 
   implicit val roleWrites: Writes[OnlinePlayerStatus] = {
-    case ONLINE => JsString(ONLINE.toString)
-    case INVISIBLE => JsString(INVISIBLE.toString)
-    case OFFLINE => JsString(OFFLINE.toString)
-    case LOOKING_FOR_GAME => JsString(LOOKING_FOR_GAME.toString)
+    case e:OnlinePlayerStatus => JsString(e.toString)
   }
   implicit val playerWrites: OWrites[BattlePlayer] = Json.writes[BattlePlayer]
   implicit val playerOWrites: OWrites[OnlinePlayer.PlayerStatus] = Json.writes[OnlinePlayer.PlayerStatus]
@@ -87,6 +84,31 @@ class GameController @Inject()(cc: ControllerComponents,
       jsonData <- OptionT(Future.successful(placeResult))
       player <- OptionT(battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey))
       status <- OptionT.liftF(doSendGameRequestMessage(player, GameRoom.AddPiece(player, jsonData)))
+    } yield status).value.map {
+      case Some(value) => value
+      case None => NotFound
+    }.recover {
+      case _ => InternalServerError
+    }
+  }
+
+  def hitBox(x: Int, y: Int): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
+
+    (for {
+      player <- OptionT(battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey))
+      status <- OptionT.liftF(doSendGameRequestMessage(player, GameRoom.HitBox(player, x, y)))
+    } yield status).value.map {
+      case Some(value) => value
+      case None => NotFound
+    }.recover {
+      case _ => InternalServerError
+    }
+  }
+
+  def leaveMatch(x: Int, y: Int): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
+    (for {
+      player <- OptionT(battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey))
+      status <- OptionT.liftF(doSendGameRequestMessage(player, GameRoom.CancelGame(Some(player))))
     } yield status).value.map {
       case Some(value) => value
       case None => NotFound

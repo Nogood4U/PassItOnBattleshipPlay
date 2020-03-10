@@ -16,11 +16,16 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
   var playersAccepted: mutable.Set[BattlePlayer] = mutable.Set[BattlePlayer]();
   var gameState: Option[GameState] = None
 
+  override def postStop(): Unit = {
+    player1.playerActor ! GameCancelled(gameId)
+    player2.playerActor ! GameCancelled(gameId)
+  }
+
   override def receive: Receive = {
     case StartGame() =>
       player1.playerActor ! GameRequest(gameId)
       player2.playerActor ! GameRequest(gameId)
-      context.become(gamePreparing)
+      context.become(gamePreparing.orElse(commonMessages))
 
   }
 
@@ -33,8 +38,8 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         player2.playerActor ! GameStarted(gameId, player1.battlePlayer)
         val entry1 = GameLogic.createGameEntry(player1.battlePlayer, 15)
         val entry2 = GameLogic.createGameEntry(player2.battlePlayer, 15)
-        gameState = Some(GameState(entry1, entry2))
-        context.become(gameStarted)
+        gameState = Some(GameState(entry1, entry2, entry1.player.id))
+        context.become(gameStarted.orElse(commonMessages))
       }
 
     case PlayerRejected(player) =>
@@ -55,7 +60,7 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         val newState = state.setEntry(player, newEntry)
         gameState = Some(newState)
         if (newState.p1.ships.size >= 9 && newState.p1.ready && newState.p2.ships.size >= 9 && newState.p2.ready) {
-          context.become(battleStarted)
+          context.become(battleStarted.orElse(commonMessages))
           self ! StartBattle()
         } else {
           sendStateupdate(gameState)
@@ -74,7 +79,7 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         val boxes = for {
           position <- piece.positions
         } yield GameBox(position.x, position.y, hit = false, Some(pieceId))
-        val newEntry = GameLogic.placeShip(entry, GamePiece(pieceId, boxes, alive = true))
+        val newEntry = GameLogic.placeShip(entry, GamePiece(pieceId, boxes, alive = true, boxes.size))
         state.setEntry(player, newEntry)
       }
       newState match {
@@ -86,8 +91,6 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         case None => sender() ! 0
       }
 
-    case GameRoom.RequestStateUpdate() =>
-      sendStateupdate(gameState)
   }
 
   def battleStarted: Receive = {
@@ -111,8 +114,55 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         val entry = state.getEnemyEntry(player)
         val newEnemyEntry = GameLogic.applyBoxHit(entry, GameBox(x, y, hit = true))
         state.setEnemyEntry(player, newEnemyEntry)
+          .copy(turnPlayer = newEnemyEntry.player.id, turn = state.turn + 1)
       }
+      sender() ! 1
+      sendStateupdate(gameState)
+      self ! GameRoom.CheckGameStatus()
+
+    case GameRoom.CheckGameStatus() =>
+      for {
+        state <- gameState
+        if state.turn > 3
+      } yield {
+        var newState = processRunningGameStatus(state)
+        newState = if (state.turn == 5)
+          state.copy(status = GameStatus.COMPLETED, winner = Some(state.p1.player))
+        else newState
+        gameState = Some(newState)
+        if (newState.status == GameStatus.COMPLETED) {
+          context.become(gameFinished.orElse(commonMessages))
+          self ! GameRoom.GameFinished()
+        }
+      }
+
   }
+
+  def gameFinished: Receive = {
+
+    case GameRoom.GameFinished() =>
+      // publish update to players
+      self ! GameRoom.RequestStateUpdate()
+      // TODO: publish data to external services , scoreboard , player mmr update etc
+      // trigger game cancel flow
+      self ! GameRoom.CancelGame(None)
+
+  }
+
+  def commonMessages: Receive = {
+    case GameRoom.RequestStateUpdate() =>
+      sendStateupdate(gameState)
+
+    case GameRoom.CancelGame(player) =>
+      context.parent ! GameServer.CancelGame(gameId)
+  }
+
+  private def processRunningGameStatus(state: GameState) =
+    if (state.p1.ships.flatMap(_.boxes).forall(shipBox => shipBox.hit)) {
+      state.copy(status = GameStatus.COMPLETED, winner = Some(state.p1.player))
+    } else if (state.p2.ships.flatMap(_.boxes).forall(shipBox => shipBox.hit)) {
+      state.copy(status = GameStatus.COMPLETED, winner = Some(state.p2.player))
+    } else state
 
   private def sendStateupdate(gameState: Option[GameState]) {
     gameState.foreach(state => {
@@ -140,6 +190,8 @@ object GameRoom {
 
   case class GameCancelled(gameId: String) extends GameRoomMessage
 
+  case class CancelGame(battlePlayer: Option[BattlePlayer]) extends GameRoomMessage
+
   case class GameStarted(gameId: String, enemy: BattlePlayer) extends GameRoomMessage
 
   case class BoardReady(player: BattlePlayer) extends GameRoomMessage
@@ -149,6 +201,10 @@ object GameRoom {
   case class AddPiece(player: BattlePlayer, pieceData: JsValue) extends GameRoomMessage
 
   case class HitBox(player: BattlePlayer, x: Int, y: Int) extends GameRoomMessage
+
+  case class CheckGameStatus() extends GameRoomMessage
+
+  case class GameFinished() extends GameRoomMessage
 
   case class GameStateUpdate(override val gameState: GameState) extends GameRoomUpdate(gameState)
 

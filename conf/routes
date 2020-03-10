@@ -33,4 +33,6 @@ POST          /game/ready                         @controllers.GameController.re
 
 POST          /game/addPiece                      @controllers.GameController.addPiece()
 
+POST          /game/hitbox/:x/:y                  @controllers.GameController.hitBox(x:Int,y:Int)
+
 POST          /game/update                        @controllers.GameController.requestServerUpdate()

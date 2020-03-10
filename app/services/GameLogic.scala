@@ -1,6 +1,5 @@
 package services
 
-import game.player.OnlinePlayer.PlayerStatus
 import models.BattlePlayer
 
 object GameLogic {
@@ -18,26 +17,32 @@ object GameLogic {
   }
 
   def applyBoxHit(entry: GameEntry, box: GameBox): GameEntry = {
-    val _boxList = for {
-      boardBox <- entry.board.boxes
-    } yield {
-      if (boardBox.x == box.x && boardBox.y == box.y && !boardBox.hit)
-        boardBox.copy(hit = true)
-      else
-        boardBox
+    def addShipId(boardBox: GameBox) = {
+      boardBox.copy(hit = true, shipId = entry.ships.flatMap(_.boxes).find(f => f.x == box.x && f.y == box.y).flatMap(_.shipId))
     }
+
+    val _boxList = if (entry.board.boxes.exists(boardBox => boardBox.x == box.x && boardBox.y == box.y)) {
+      for {
+        boardBox <- entry.board.boxes
+        if boardBox.x == box.x && boardBox.y == box.y && !boardBox.hit
+      } yield {
+        addShipId(boardBox)
+      }
+    } else {
+      addShipId(box) :: entry.board.boxes
+    }
+
     val newBoard = entry.board.copy(boxes = _boxList)
-    entry.copy(board = newBoard)
-    syncShipStatus(entry, _boxList.filter(_.hit == true))
+
+    syncShipStatus(entry.copy(board = newBoard), _boxList.filter(_.hit == true))
   }
 
   private def syncShipStatus(entry: GameEntry, hitBoxList: List[GameBox]): GameEntry = {
     val newShips = entry.ships.map(ship => {
-      val newBoxes = for {
-        box <- ship.boxes
-        _box <- hitBoxList
-        if box.x == _box.x && box.y == _box.y && !box.hit
-      } yield box.copy(hit = true)
+      val newBoxes = ship.boxes.map(box => {
+        hitBoxList.find(_box => box.x == _box.x && box.y == _box.y && !box.hit)
+          .map(_.copy(hit = true)).getOrElse(box)
+      })
       ship.copy(boxes = newBoxes)
     })
     entry.copy(ships = newShips)
@@ -53,7 +58,11 @@ case class GameEntry(player: BattlePlayer,
 
 case class GameState(p1: GameEntry,
                      p2: GameEntry,
-                     status: GameStatus.Status = GameStatus.PREPARING) {
+                     turnPlayer: Long,
+                     status: GameStatus.Status = GameStatus.PREPARING,
+                     turn: Int = 0,
+                     winner: Option[BattlePlayer] = None) {
+
   def getEntry(player: BattlePlayer): GameEntry = if (p1.player == player) p1 else p2
 
   def getEnemyEntry(player: BattlePlayer): GameEntry = if (p1.player != player) p1 else p2
@@ -73,7 +82,7 @@ case class GameState(p1: GameEntry,
 
 case class GameBoard(boxes: List[GameBox])
 
-case class GamePiece(id: String, boxes: List[GameBox], alive: Boolean)
+case class GamePiece(id: String, boxes: List[GameBox], alive: Boolean, size: Int)
 
 case class GameBox(x: Int, y: Int, hit: Boolean, shipId: Option[String] = None)
 

@@ -10,6 +10,7 @@ import game.server.GameRoom.{GameRoomMessage, GameRoomUpdate}
 import game.server.{GameRoom, GameServer}
 import models.BattlePlayer
 import play.api.libs.json.{JsValue, Json}
+import services.GameStatus
 
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Failure
@@ -100,7 +101,7 @@ class OnlinePlayer(player: BattlePlayer) extends Actor {
     case msg: GameRoomUpdate =>
       val filteredEntries = List(msg.gameState.p1, msg.gameState.p2)
         .map(entry => {
-          if (entry.player != this.player) {
+          if (entry.player != this.player && msg.gameState.status != GameStatus.COMPLETED) {
             val newShipsList = entry.ships.map(ship => ship.copy(boxes = List.empty))
             entry.copy(ships = newShipsList)
           } else entry
