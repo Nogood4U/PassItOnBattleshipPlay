@@ -15,6 +15,7 @@ case class GameRoomEntry(battlePlayer: BattlePlayer, playerActor: ActorRef)
 class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) extends Actor {
   var playersAccepted: mutable.Set[BattlePlayer] = mutable.Set[BattlePlayer]();
   var gameState: Option[GameState] = None
+  var spectators: mutable.Map[String, ActorRef] = mutable.Map.empty
 
   override def postStop(): Unit = {
     player1.playerActor ! GameCancelled(gameId)
@@ -38,7 +39,7 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
         player2.playerActor ! GameStarted(gameId, player1.battlePlayer)
         val entry1 = GameLogic.createGameEntry(player1.battlePlayer, 15)
         val entry2 = GameLogic.createGameEntry(player2.battlePlayer, 15)
-        gameState = Some(GameState(entry1, entry2, entry1.player.id))
+        gameState = Some(GameState(gameId, entry1, entry2, entry1.player.id))
         context.become(gameStarted.orElse(commonMessages))
       }
 
@@ -155,6 +156,10 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
 
     case GameRoom.CancelGame(player) =>
       context.parent ! GameServer.CancelGame(gameId)
+
+    case GameRoom.AddSpectator(outPut, id) => spectators.put(id, outPut)
+
+    case GameRoom.RemoveSpectator(id) => spectators.remove(id)
   }
 
   private def processRunningGameStatus(state: GameState) =
@@ -168,6 +173,7 @@ class GameRoom(gameId: String, player1: GameRoomEntry, player2: GameRoomEntry) e
     gameState.foreach(state => {
       player1.playerActor ! GameRoom.GameStateUpdate(state)
       player2.playerActor ! GameRoom.GameStateUpdate(state)
+      spectators.values.foreach(_ ! GameRoom.GameStateUpdate(state))
     })
   }
 }
@@ -209,5 +215,9 @@ object GameRoom {
   case class GameStateUpdate(override val gameState: GameState) extends GameRoomUpdate(gameState)
 
   case class RequestStateUpdate() extends GameRoomMessage
+
+  case class AddSpectator(outPut: ActorRef, id: String)
+
+  case class RemoveSpectator(id: String)
 
 }

@@ -43,7 +43,7 @@ object GameLogic {
         hitBoxList.find(_box => box.x == _box.x && box.y == _box.y && !box.hit)
           .map(_.copy(hit = true)).getOrElse(box)
       })
-      ship.copy(boxes = newBoxes)
+      ship.copy(boxes = newBoxes, alive = newBoxes.forall(box => !box.hit))
     })
     entry.copy(ships = newShips)
   }
@@ -56,7 +56,8 @@ case class GameEntry(player: BattlePlayer,
                      ready: Boolean = false
                     )
 
-case class GameState(p1: GameEntry,
+case class GameState(gameId: String,
+                     p1: GameEntry,
                      p2: GameEntry,
                      turnPlayer: Long,
                      status: GameStatus.Status = GameStatus.PREPARING,

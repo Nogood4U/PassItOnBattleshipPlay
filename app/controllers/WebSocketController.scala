@@ -1,24 +1,28 @@
 package controllers
 
+import java.util.concurrent.TimeUnit
+
 import akka.NotUsed
 import akka.actor.{ActorRef, ActorSystem}
+import akka.stream.Attributes.InputBuffer
 import akka.stream.scaladsl._
-import akka.stream.{Materializer, OverflowStrategy}
+import akka.stream.{Attributes, Materializer, OverflowStrategy}
 import com.mohiva.play.silhouette.api.{HandlerResult, Silhouette}
 import game.player.OnlinePlayer
-import javax.inject.Inject
+import javax.inject.{Inject, Named}
 import org.reactivestreams.Publisher
 import play.api.libs.json.{JsValue, Json}
 import play.api.mvc._
 import services.BattlePlayerService
+import scala.concurrent.duration._
 
 import scala.concurrent.{ExecutionContext, Future}
 
-class
-WebSocketController @Inject()(cc: ControllerComponents,
-                              battlePlayerService: BattlePlayerService,
-                              silhouette: Silhouette[DefaultEnv])
-                             (implicit exec: ExecutionContext, mat: Materializer, actorSystem: ActorSystem) extends AbstractController(cc) {
+class WebSocketController @Inject()(cc: ControllerComponents,
+                                    battlePlayerService: BattlePlayerService,
+                                    silhouette: Silhouette[DefaultEnv],
+                                    @Named("spectator-socket") socketTuple: (ActorRef, Source[String, NotUsed]))
+                                   (implicit exec: ExecutionContext, mat: Materializer, actorSystem: ActorSystem) extends AbstractController(cc) {
 
 
   def ws(uid: String): WebSocket = WebSocket.acceptOrResult[String, String] { request =>
@@ -44,7 +48,6 @@ WebSocketController @Inject()(cc: ControllerComponents,
 
 
   private def getWebsocketFlow(playerActor: ActorRef) = {
-    import scala.concurrent.duration._
     // We read from sink
     // Play read from source and sends to client
     val disconnectedMessage = "{\"disconnected_socket\":true}"
@@ -71,5 +74,11 @@ WebSocketController @Inject()(cc: ControllerComponents,
     Flow.fromSinkAndSourceCoupled(Sink.actorRef[String](g._1, disconnectedMessage), Source.fromPublisher[String](both._2)
       .keepAlive(1.minutes, () => "{}"))
   }
+
+  def wsSpectator(uid: String): WebSocket = WebSocket.acceptOrResult[String, String] { request =>
+
+    Future.successful(Right(Flow.fromSinkAndSource(Sink.ignore, socketTuple._2).keepAlive(1.minutes, () => "{}")))
+  }
+
 
 }

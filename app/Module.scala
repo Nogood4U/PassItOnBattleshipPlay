@@ -1,6 +1,6 @@
 import java.time.Clock
 
-import akka.actor.ActorSystem
+import akka.actor.{ActorRef, ActorSystem}
 import com.google.inject.AbstractModule
 import game.server.GameServer
 import javax.inject.Inject
@@ -37,11 +37,11 @@ import play.api.inject.ApplicationLifecycle
 import scala.concurrent.Future
 
 @Singleton
-class ApplicationStart @Inject()(lifecycle: ApplicationLifecycle, actorSystem: ActorSystem) {
+class ApplicationStart @Inject()(lifecycle: ApplicationLifecycle, actorSystem: ActorSystem, @Named("spectator-actor") spectatorActor: ActorRef) {
   // Shut-down hook
   lifecycle.addStopHook { () =>
     Future.successful(())
   }
-  actorSystem.actorOf(GameServer.props, "Server_Main")
+  actorSystem.actorOf(GameServer.props(spectatorActor), "Server_Main")
   //...
 }

@@ -13,7 +13,7 @@ import models.BattlePlayer
 import scala.collection.mutable
 import scala.concurrent.duration.FiniteDuration
 
-class GameServer extends Actor {
+class GameServer(spectatorActor: ActorRef) extends Actor {
   private val settings = mutable.Map[String, String]()
   private val games = mutable.Map[String, ActorRef]()
   private val mmActor = context.actorOf(MatchMaking.props)
@@ -62,17 +62,21 @@ class GameServer extends Actor {
       val gameActor = context.child(s"Game-${gameId}")
       gameActor.foreach(_ ! GameRoom.PlayerAccepted(player))
       gameActor.foreach(sender ! _)
-
+      self ! SpectateGames(3, spectatorActor)
 
     case CancelGame(gameId) =>
       games.remove(gameId).foreach(_ ! PoisonPill)
+
+    case SpectateGames(num, output) =>
+      games.take(num).values.foreach(_ ! GameRoom.AddSpectator(output, "global_spectator"))
+
   }
 
 }
 
 object GameServer {
 
-  def props: Props = Props[GameServer]
+  def props(spectatorActor: ActorRef): Props = Props(classOf[GameServer], spectatorActor)
 
   def proxyProps(proxyPlayer: ActorRef) = Props(classOf[PlayerProxy], proxyPlayer)
 
@@ -99,6 +103,8 @@ object GameServer {
   case class RejectGame(player: BattlePlayer, gameId: String) extends GameRequestMessage
 
   case class CancelGame(gameId: String)
+
+  case class SpectateGames(num: Int, output: ActorRef)
 
 }
 

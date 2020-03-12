@@ -21,6 +21,8 @@ PUT           /player/:playerId                   @controllers.HomeController.up
 
 GET           /socket/:uid                        @controllers.WebSocketController.ws(uid)
 
+GET           /socket/spectator/:uid              @controllers.WebSocketController.wsSpectator(uid)
+
 POST          /game/matchmaking                   @controllers.GameController.joinMatchMaking
 
 DELETE        /game/matchmaking/cancel            @controllers.GameController.cancelMatchMaking
@@ -34,5 +36,7 @@ POST          /game/ready                         @controllers.GameController.re
 POST          /game/addPiece                      @controllers.GameController.addPiece()
 
 POST          /game/hitbox/:x/:y                  @controllers.GameController.hitBox(x:Int,y:Int)
+
+POST          /game/cancel                        @controllers.GameController.leaveMatch()
 
 POST          /game/update                        @controllers.GameController.requestServerUpdate()

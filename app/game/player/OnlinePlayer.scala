@@ -91,6 +91,7 @@ class OnlinePlayer(player: BattlePlayer) extends Actor {
       val _sender = sender()
       server.foreach(s => s ? GameServer.RejectGame(player, gameId) foreach (rt => {
         gameRoomId = None
+        status = ONLINE
         _sender ! rt
       }))
 

@@ -25,7 +25,7 @@ class GameController @Inject()(cc: ControllerComponents,
                                silhouette: Silhouette[DefaultEnv])(implicit actorSystem: ActorSystem, exec: ExecutionContext) extends AbstractController(cc) {
 
   implicit val roleWrites: Writes[OnlinePlayerStatus] = {
-    case e:OnlinePlayerStatus => JsString(e.toString)
+    case e: OnlinePlayerStatus => JsString(e.toString)
   }
   implicit val playerWrites: OWrites[BattlePlayer] = Json.writes[BattlePlayer]
   implicit val playerOWrites: OWrites[OnlinePlayer.PlayerStatus] = Json.writes[OnlinePlayer.PlayerStatus]
@@ -105,7 +105,7 @@ class GameController @Inject()(cc: ControllerComponents,
     }
   }
 
-  def leaveMatch(x: Int, y: Int): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
+  def leaveMatch(): Action[AnyContent] = silhouette.SecuredAction.async { implicit request: SecuredRequest[DefaultEnv, AnyContent] =>
     (for {
       player <- OptionT(battlePlayerService.getBattlePlayer(request.identity.loginInfo.providerKey))
       status <- OptionT.liftF(doSendGameRequestMessage(player, GameRoom.CancelGame(Some(player))))
